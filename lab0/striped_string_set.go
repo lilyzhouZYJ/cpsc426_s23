@@ -3,6 +3,7 @@ package string_set
 import (
 	// "fmt"
 	"sync"
+	"sync/atomic"
 )
 
 // The StripedStringSet is an array of stripeCount stripes
@@ -10,6 +11,8 @@ import (
 type StripedStringSet struct {
 	stripes []StringSetStripe
 	stripeCount int
+
+	count int32 // atomic counter
 }
 
 // Define structure for each stripe
@@ -33,7 +36,8 @@ func fnv32(key string) uint32 {
 
 // Constructor
 func MakeStripedStringSet(stripeCount int) StripedStringSet {
-	return StripedStringSet{make([]StringSetStripe, stripeCount, stripeCount), stripeCount}
+	// return StripedStringSet{make([]StringSetStripe, stripeCount, stripeCount), stripeCount}
+	return StripedStringSet{make([]StringSetStripe, stripeCount, stripeCount), stripeCount, 0}
 }
 
 func (stringSet *StripedStringSet) Add(key string) bool {
@@ -60,25 +64,30 @@ func (stringSet *StripedStringSet) Add(key string) bool {
 		return false
 	} else {
 		targetStripe.set[key] = true
+
+		atomic.AddInt32(&(stringSet.count), 1) // atomic counter
 		return true
 	}
 }
 
 func (stringSet *StripedStringSet) Count() int {
-	// Total count
-	sum := 0
+	// // Total count
+	// sum := 0
 
-	// Iterate through every stripe, and for each:
-	// (a) Read lock the stripe
-	// (b) Add size of stripe to sum
-	for i := 0; i < stringSet.stripeCount; i++ {
-		stringSet.stripes[i].lock.RLock()
-		defer stringSet.stripes[i].lock.RUnlock()
+	// // Iterate through every stripe, and for each:
+	// // (a) Read lock the stripe
+	// // (b) Add size of stripe to sum
+	// for i := 0; i < stringSet.stripeCount; i++ {
+	// 	stringSet.stripes[i].lock.RLock()
+	// 	defer stringSet.stripes[i].lock.RUnlock()
 
-		sum += len(stringSet.stripes[i].set)
-	}
+	// 	sum += len(stringSet.stripes[i].set)
+	// }
 
-	return sum
+	// return sum
+
+	result := atomic.LoadInt32(&stringSet.count)
+	return int(result)
 }
 
 func (stringSet *StripedStringSet) PredRange(begin string, end string, pattern string) []string {
