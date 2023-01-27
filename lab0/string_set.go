@@ -2,7 +2,7 @@ package string_set
 
 import (
 	"sync"
-	// "fmt"
+	"fmt"
 )
 
 type StringSet interface {
@@ -41,9 +41,10 @@ func (stringSet *LockedStringSet) Add(key string) bool {
 }
 
 func (stringSet *LockedStringSet) Count() int {
+	fmt.Print()
 	stringSet.lock.RLock()
 	defer stringSet.lock.RUnlock()
-	// fmt.Println(len(stringSet.set))
+	
 	return len(stringSet.set)
 }
 

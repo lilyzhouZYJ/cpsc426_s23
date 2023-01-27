@@ -71,14 +71,13 @@ func testConcurrentAdds(t *testing.T, set StringSet) {
 	finalCh := make(chan struct{})
 
 	numGoros := runtime.NumCPU()
-	fmt.Println("numGoros ", numGoros)
+	// fmt.Println("numGoros ", numGoros)
 	expectedNumItems := ((numGoros-1)/5 + 1) * 1000
-	fmt.Println("expectedNumItens ", expectedNumItems)
+	// fmt.Println("expectedNumItens ", expectedNumItems)
 	for i := 0; i < numGoros; i++ {
 		go func(i int) {
 			for x := 0; x < 100; x++ {
 				for y := 0; y < 1000; y++ {
-					// fmt.Println(i, x, y)
 					set.Add(strconv.Itoa(i/5 + y*1000))
 				}
 			}
@@ -87,7 +86,7 @@ func testConcurrentAdds(t *testing.T, set StringSet) {
 		// spinnup readers to continue reading count()
 		go func(i int) {
 			for {
-				fmt.Println(i)
+				// fmt.Println(i) // printing here would delay the reader, speeding up the testing
 				select {
 				case <-finalCh:
 					return
