@@ -1,0 +1,36 @@
+# Part B2
+
+Strategies for keeping count:
+
+1. iterate through the entire set across all stripes each time a count is needed;
+2. keep a per-stripe counter and add up counters from every stripe when queried;
+3. keep a global (i.e., one single) counter that gets updated when a string is added.
+
+What are the advantages and disadvantages of each of these approaches?
+Can you think of query patterns where one works better than another?
+
+For Approach 1, assuming that we are not making use of the stripes in our counting (i.e. we are not
+doing any sort of per-stripe counting), we would need to simultaneously hold a read lock on all stripes.
+This increases lock contention and reduces the benefit of striping (since we are still locking the 
+entire set), but it has the advantage that when the the Count() function returns, the returned value 
+is guaranteed to reflect the size of the set at that moment. Moreover, this approach also has the 
+disadvantage of being O(N).
+
+For Approach 2, because we are using per-stripe counting, we only need to hold the lock on one stripe
+at a time: when we are adding a string, we hold the write lock on the stripe, and when we are reading 
+its counter, we hold the read lock on the stripe. This maintains the advantage of striping, using 
+stripe-level locking to reduce lock contention. But on the other hand, it has the disadvantage that 
+when the Count() function returns, it is not guaranteed that the returned value actually reflects the 
+size of the set at that moment. This is because it is possible that some stripe is modified after we 
+read its counter value.
+
+For Approach 3, using a global atomic counter would allow us to bypass the issue of what to lock when
+counting. It maintains the benefits of striping, and it also doesn't require iterating through all the
+stripes to read their counts. One disadvantage is that like Approach 2, when Count() returns, it is not
+guaranteed that the returned value actually reflects the size of the set at that moment.
+
+Between Approach 1 and 2, queries with more writes would perform better with Approach 2, because it
+doesn't require holding a read lock on the entire set when accessing the count. Queries with more reads
+would not be much affected by the distinction between Approach 1 and 2.
+
+TODO: is there any query pattern where Approach 1/2 would work better than 3?
