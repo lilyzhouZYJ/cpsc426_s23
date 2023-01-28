@@ -11,17 +11,10 @@ Date  Started  Spent Work completed
                      think a bit more though
 1/27  1:00am   0:40  added the atomic counter approach to B2
 1/28  10:15am  1:00  finish Part C
-
-8/02   9:00am  2:20  wrote functions for determining whether a roll is
-                     three of a kind, four of a kind, and all the other
-                     lower categories
-8/04   4:45pm  1:15  wrote code to create the graph for the components
-8/05   7:05pm  2:00  discovered and corrected two logical errors; code now
-                     passes all tests except where choice is Yahtzee
-8/07  11:00am  1:35  finished debugging; program passes all public tests
+1/28  11:25am  0:20  modify and fix Part B2 discussion
                ----
-               7:55  TOTAL time spent
+               7:15  TOTAL time spent
 
-I discussed my solution with: TODO
+I discussed my solution with: Peter Yu, Anna Zhang
 
 Discussion: TODO
