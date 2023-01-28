@@ -12,9 +12,20 @@ Date  Started  Spent Work completed
 1/27  1:00am   0:40  added the atomic counter approach to B2
 1/28  10:15am  1:00  finish Part C
 1/28  11:25am  0:20  modify and fix Part B2 discussion
+1/28  11:45am  0:30  switch to using atomic counter for LockedStringSet; fix
+                     the resulting error in C3 discussion; ExtraCredit2
                ----
-               7:15  TOTAL time spent
+               7:45  TOTAL time spent
 
 I discussed my solution with: Peter Yu, Anna Zhang
 
-Discussion: TODO
+Discussion: (major conceptual and coding difficulties)
+One major source of coding difficulty was my lack of familiarity with Go. I found myself
+frequently consulting the documentation to figure out how to do the simplest things in Go,
+like initializing a struct, appending a slice to another slice, etc. However, now I think
+I have a much better grasp of Go. A conceptual difficulty was trying to understand the three
+given approaches for keeping count in StripedStringSet. I spent quite some time just
+thinking about how each approach would be implemented, and the pros and cons of each.
+In particular, I was confused by how atomic counters worked, and how it would affect
+both the locking scheme of the program and its performance, but it made more sense after
+actually implementing the approach into my program.
