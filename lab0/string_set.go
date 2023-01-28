@@ -3,6 +3,7 @@ package string_set
 import (
 	"sync"
 	"fmt"
+	"regexp"
 )
 
 type StringSet interface {
@@ -49,5 +50,19 @@ func (stringSet *LockedStringSet) Count() int {
 }
 
 func (stringSet *LockedStringSet) PredRange(begin string, end string, pattern string) []string {
-	return make([]string, 0)
+	// Result list
+	results := make([]string, 0)
+
+	stringSet.lock.RLock()
+	defer stringSet.lock.RUnlock()
+
+	for key, _ := range stringSet.set {
+		re := regexp.MustCompile(pattern)
+		if re.Match([]byte(key)) && begin <= key && key < end {
+			// Found a result in range
+			results = append(results, key)
+		}
+	}
+
+	return results
 }

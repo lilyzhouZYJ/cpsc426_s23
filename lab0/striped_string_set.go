@@ -3,7 +3,7 @@ package string_set
 import (
 	// "fmt"
 	"sync"
-	// "sync/atomic"
+	"sync/atomic"
 	"regexp"
 )
 
@@ -13,7 +13,7 @@ type StripedStringSet struct {
 	stripes []StringSetStripe
 	stripeCount int
 
-	// count int32 // global atomic counter
+	count int32 // global atomic counter
 }
 
 // Define structure for each stripe
@@ -37,8 +37,8 @@ func fnv32(key string) uint32 {
 
 // Constructor
 func MakeStripedStringSet(stripeCount int) StripedStringSet {
-	return StripedStringSet{make([]StringSetStripe, stripeCount, stripeCount), stripeCount}
-	// return StripedStringSet{make([]StringSetStripe, stripeCount, stripeCount), stripeCount, 0}
+	// return StripedStringSet{make([]StringSetStripe, stripeCount, stripeCount), stripeCount}
+	return StripedStringSet{make([]StringSetStripe, stripeCount, stripeCount), stripeCount, 0}
 }
 
 func (stringSet *StripedStringSet) Add(key string) bool {
@@ -66,7 +66,7 @@ func (stringSet *StripedStringSet) Add(key string) bool {
 	} else {
 		targetStripe.set[key] = true
 
-		// atomic.AddInt32(&(stringSet.count), 1) // increment global counter
+		atomic.AddInt32(&(stringSet.count), 1) // increment global counter
 		return true
 	}
 }
@@ -74,25 +74,46 @@ func (stringSet *StripedStringSet) Add(key string) bool {
 func (stringSet *StripedStringSet) Count() int {
 
 	/* Using len() on each stripe */
-	// Total count
-	sum := 0
+	// // Total count
+	// sum := 0
 
-	// Iterate through every stripe, and for each:
-	// (a) Read lock the stripe
-	// (b) Add size of stripe to sum
-	for i := 0; i < stringSet.stripeCount; i++ {
-		stringSet.stripes[i].lock.RLock()
-		sum += len(stringSet.stripes[i].set)
-		stringSet.stripes[i].lock.RUnlock()
-	}
+	// // Iterate through every stripe, and for each:
+	// // (a) Read lock the stripe
+	// // (b) Add size of stripe to sum
+	// for i := 0; i < stringSet.stripeCount; i++ {
+	// 	stringSet.stripes[i].lock.RLock()
+	// 	sum += len(stringSet.stripes[i].set)
+	// 	stringSet.stripes[i].lock.RUnlock()
+	// }
 
-	return sum
+	// return sum
 
 	/* Using global counter (atomic counter) */
-	// result := atomic.LoadInt32(&stringSet.count)
-	// return int(result)
+	result := atomic.LoadInt32(&stringSet.count)
+	return int(result)
 }
 
 func (stringSet *StripedStringSet) PredRange(begin string, end string, pattern string) []string {
-	return make([]string, 0)
+	// Result list
+	results := make([]string, 0)
+
+	// Iterate through every stripe, and for each:
+	// (a) Read lock the stripe
+	// (b) Iterate through every string in stripe and
+	//     check if it is in the range
+	for i := 0; i < stringSet.stripeCount; i++ {
+		stringSet.stripes[i].lock.RLock()
+
+		for key, _ := range stringSet.stripes[i].set {
+			re := regexp.MustCompile(pattern)
+			if re.Match([]byte(key)) && begin <= key && key < end {
+				// Found a result in range
+				results = append(results, key)
+			}
+		}
+
+		stringSet.stripes[i].lock.RUnlock()
+	}
+
+	return results
 }
