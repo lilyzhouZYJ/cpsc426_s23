@@ -94,25 +94,46 @@ func (stringSet *StripedStringSet) Count() int {
 }
 
 func (stringSet *StripedStringSet) PredRange(begin string, end string, pattern string) []string {
-	// Result list
+	// Aggregate result list
 	results := make([]string, 0)
+	
+	// Create wait group and channel for goroutines
+	var wg sync.WaitGroup
+    ch := make(chan []string, stringSet.stripeCount)
 
 	// Iterate through every stripe, and for each:
 	// (a) Read lock the stripe
 	// (b) Iterate through every string in stripe and
 	//     check if it is in the range
 	for i := 0; i < stringSet.stripeCount; i++ {
-		stringSet.stripes[i].lock.RLock()
+		wg.Add(1)
 
-		for key, _ := range stringSet.stripes[i].set {
-			re := regexp.MustCompile(pattern)
-			if re.Match([]byte(key)) && begin <= key && key < end {
-				// Found a result in range
-				results = append(results, key)
+		go func(v int) {
+			stringSet.stripes[v].lock.RLock()
+
+			stripe_results := make([]string, 0)
+
+			for key, _ := range stringSet.stripes[v].set {
+				re := regexp.MustCompile(pattern)
+				if re.Match([]byte(key)) && begin <= key && key < end {
+					// Found a result in range
+					stripe_results = append(stripe_results, key)
+				}
 			}
-		}
 
-		stringSet.stripes[i].lock.RUnlock()
+			// Pass result back to main routine using channel
+			ch <- stripe_results
+
+			stringSet.stripes[v].lock.RUnlock()
+			wg.Done()
+		}(i)
+	}
+
+	wg.Wait()
+	close(ch) // close channel when all goroutines are done
+
+	for stripe_results := range ch {
+		results = append(results, stripe_results...)
 	}
 
 	return results
