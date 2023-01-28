@@ -3,7 +3,8 @@ package string_set
 import (
 	// "fmt"
 	"sync"
-	"sync/atomic"
+	// "sync/atomic"
+	"regexp"
 )
 
 // The StripedStringSet is an array of stripeCount stripes
@@ -12,7 +13,7 @@ type StripedStringSet struct {
 	stripes []StringSetStripe
 	stripeCount int
 
-	count int32 // atomic counter
+	// count int32 // global atomic counter
 }
 
 // Define structure for each stripe
@@ -36,8 +37,8 @@ func fnv32(key string) uint32 {
 
 // Constructor
 func MakeStripedStringSet(stripeCount int) StripedStringSet {
-	// return StripedStringSet{make([]StringSetStripe, stripeCount, stripeCount), stripeCount}
-	return StripedStringSet{make([]StringSetStripe, stripeCount, stripeCount), stripeCount, 0}
+	return StripedStringSet{make([]StringSetStripe, stripeCount, stripeCount), stripeCount}
+	// return StripedStringSet{make([]StringSetStripe, stripeCount, stripeCount), stripeCount, 0}
 }
 
 func (stringSet *StripedStringSet) Add(key string) bool {
@@ -65,29 +66,31 @@ func (stringSet *StripedStringSet) Add(key string) bool {
 	} else {
 		targetStripe.set[key] = true
 
-		atomic.AddInt32(&(stringSet.count), 1) // atomic counter
+		// atomic.AddInt32(&(stringSet.count), 1) // increment global counter
 		return true
 	}
 }
 
 func (stringSet *StripedStringSet) Count() int {
-	// // Total count
-	// sum := 0
 
-	// // Iterate through every stripe, and for each:
-	// // (a) Read lock the stripe
-	// // (b) Add size of stripe to sum
-	// for i := 0; i < stringSet.stripeCount; i++ {
-	// 	stringSet.stripes[i].lock.RLock()
-	// 	defer stringSet.stripes[i].lock.RUnlock()
+	/* Using len() on each stripe */
+	// Total count
+	sum := 0
 
-	// 	sum += len(stringSet.stripes[i].set)
-	// }
+	// Iterate through every stripe, and for each:
+	// (a) Read lock the stripe
+	// (b) Add size of stripe to sum
+	for i := 0; i < stringSet.stripeCount; i++ {
+		stringSet.stripes[i].lock.RLock()
+		sum += len(stringSet.stripes[i].set)
+		stringSet.stripes[i].lock.RUnlock()
+	}
 
-	// return sum
+	return sum
 
-	result := atomic.LoadInt32(&stringSet.count)
-	return int(result)
+	/* Using global counter (atomic counter) */
+	// result := atomic.LoadInt32(&stringSet.count)
+	// return int(result)
 }
 
 func (stringSet *StripedStringSet) PredRange(begin string, end string, pattern string) []string {
