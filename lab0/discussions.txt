@@ -34,3 +34,23 @@ doesn't require holding a read lock on the entire set when accessing the count. 
 would not be much affected by the distinction between Approach 1 and 2.
 
 TODO: is there any query pattern where Approach 1/2 would work better than 3?
+
+
+# Part C3
+
+Sub-benchmark: adds+counts
+- LockedStringSet/adds+counts:             879.8 ns/op
+- StripedStringSet/adds+counts/stripes=2:  180.8 ns/op
+
+Discussion:
+Splitting the string set into 2 stripes significantly boosted performance in adds+counts. This is
+expected, because when we have 2 stripes in the set, operations in one stripe would not interfere
+with operations in the other stripe. Hence, we could have Add operations run in parallel on the set.
+
+Sub-benchmark: scans:serial
+- LockedStringSet/scans:serial:             506476748 ns/op
+- StripedStringSet/scans:serial/stripes=2:  306903268 ns/op
+
+Sub-benchmark: scans:parallel
+- LockedStringSet/scans:parallel:             166634118 ns/op
+- StripedStringSet/scans:parallel/stripes=2:  118152799 ns/op
