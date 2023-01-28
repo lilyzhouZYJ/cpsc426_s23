@@ -46,18 +46,37 @@ global counter).
 # Part C3
 
 Sub-benchmark: adds+counts
-- LockedStringSet/adds+counts:             879.8 ns/op
-- StripedStringSet/adds+counts/stripes=2:  180.8 ns/op
+- BenchMarkLockedStringSet/adds+counts:             184.3 ns/op
+- BenchMarkStripedStringSet/adds+counts/stripes=2:  180.8 ns/op
 
 Discussion:
-Splitting the string set into 2 stripes significantly boosted performance in adds+counts. This is
-expected, because when we have 2 stripes in the set, operations in one stripe would not interfere
-with operations in the other stripe. Hence, we could have Add operations run in parallel on the set.
+For adds+counts, splitting the string set into 2 stripes did not boost performance. This is a bit
+surprising: I though it would improve performance because adding to one stripe would not interfere
+with adding into the other stripe, and as a result, the Add operations of the test would be more
+efficient. However, the effect of having only 2 stripes may be limited. This effect may be further
+diminished by the additional overhead introduced in striping. This would explain why there is no
+improvement in performance with stripes=2.
 
-Sub-benchmark: scans:serial
-- LockedStringSet/scans:serial:             506476748 ns/op
-- StripedStringSet/scans:serial/stripes=2:  306903268 ns/op
+# ExtraCredit2
 
-Sub-benchmark: scans:parallel
-- LockedStringSet/scans:parallel:             166634118 ns/op
-- StripedStringSet/scans:parallel/stripes=2:  118152799 ns/op
+Using the sub-benchmark of adds+counts with different stripe counts, I observed the following:
+
+- BenchmarkStripedStringSet/adds+counts/stripes=1-8               5449954        195.1 ns/op
+- BenchmarkStripedStringSet/adds+counts/stripes=2-8               5821610        204.5 ns/op
+- BenchmarkStripedStringSet/adds+counts/stripes=4-8               7994275        146.4 ns/op
+- BenchmarkStripedStringSet/adds+counts/stripes=8-8              12811092        100.8 ns/op
+- BenchmarkStripedStringSet/adds+counts/stripes=16-8             14704314         69.77 ns/op
+- BenchmarkStripedStringSet/adds+counts/stripes=32-8             20096971         53.14 ns/op
+- BenchmarkStripedStringSet/adds+counts/stripes=64-8             26208556         43.32 ns/op
+- BenchmarkStripedStringSet/adds+counts/stripes=128-8            30288310         39.33 ns/op
+- BenchmarkStripedStringSet/adds+counts/stripes=256-8            34413177         35.46 ns/op
+- BenchmarkStripedStringSet/adds+counts/stripes=512-8            43290590         27.71 ns/op
+- BenchmarkStripedStringSet/adds+counts/stripes=1024-8           45832153         35.58 ns/op
+- BenchmarkStripedStringSet/adds+counts/stripes=2048-8           33296505         39.80 ns/op
+- BenchmarkStripedStringSet/adds+counts/stripes=4096-8           34657261         36.57 ns/op
+
+This pattern shows significant performance improvement as the stripe count increases, reaching only
+27.71 ns/op with 512 stripes. However, afterwards we reach 512 stripes, the performance worsens as
+the stripe count increases. This can be explained by the overhead of striping, which begins to 
+cancel out the benefit of striping after we reach 512 stripes. In this case, the optimal stripe count
+is 512.

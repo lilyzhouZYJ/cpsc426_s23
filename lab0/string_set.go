@@ -2,8 +2,9 @@ package string_set
 
 import (
 	"sync"
-	"fmt"
+	// "fmt"
 	"regexp"
+	"sync/atomic"
 )
 
 type StringSet interface {
@@ -22,6 +23,8 @@ type StringSet interface {
 type LockedStringSet struct {
 	set map[string]bool
 	lock sync.RWMutex
+
+	count int32 // counter
 }
 
 func MakeLockedStringSet() LockedStringSet {
@@ -37,16 +40,22 @@ func (stringSet *LockedStringSet) Add(key string) bool {
 		return false
 	} else {
 		stringSet.set[key] = true
+		atomic.AddInt32(&(stringSet.count), 1) // increment counter
 		return true
 	}
 }
 
 func (stringSet *LockedStringSet) Count() int {
-	fmt.Print()
-	stringSet.lock.RLock()
-	defer stringSet.lock.RUnlock()
+	/* Using len() */
+	// fmt.Print()
+	// stringSet.lock.RLock()
+	// defer stringSet.lock.RUnlock()
 	
-	return len(stringSet.set)
+	// return len(stringSet.set)
+
+	/* Using atomic counter */
+	result := atomic.LoadInt32(&stringSet.count)
+	return int(result)
 }
 
 func (stringSet *LockedStringSet) PredRange(begin string, end string, pattern string) []string {
