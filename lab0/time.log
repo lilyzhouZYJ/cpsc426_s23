@@ -14,12 +14,14 @@ Date  Started  Spent Work completed
 1/28  11:25am  0:20  modify and fix Part B2 discussion
 1/28  11:45am  0:30  switch to using atomic counter for LockedStringSet; fix
                      the resulting error in C3 discussion; ExtraCredit2
+2/01  12:30pm  0:15  ExtraCredit1
                ----
-               7:45  TOTAL time spent
+               8:00  TOTAL time spent
 
 I discussed my solution with: Peter Yu, Anna Zhang
 
-Discussion: (major conceptual and coding difficulties)
+Discussion (major conceptual and coding difficulties):
+
 One major source of coding difficulty was my lack of familiarity with Go. I found myself
 frequently consulting the documentation to figure out how to do the simplest things in Go,
 like initializing a struct, appending a slice to another slice, etc. However, now I think

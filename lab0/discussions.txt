@@ -35,13 +35,37 @@ For Approach 3, using an atomic counter would allow us to avoid using locks on t
 would also eliminate the need to iterate through all the stripes and count each of them, hence improving
 the performance of the Count operation. When we are reading the global counter, we don't even need to
 lock any of the stripes, which means that the Count operation has minimal interference with the Add
-operation (the only interference occurs at the level of the atomic counter). Like Approach 2, however,
-Approach 3 does have the additional work of incrementing the atomic counter in the Add operation. Hence,
-compared to Approach 1 and Approach 2, Approach 3 has the best performance for the Count operation and 
-would perform better for query patterns that have a lot of Count operations. Approach 3 also has the
-disadvantage that when the Count operation returns, the returned value does not necessarily reflect
-the size of the set at that moment (because the stripes may have been modified but haven't updated the
-global counter).
+operation (the only interference occurs at the level of the atomic counter, which has a much smaller
+effect than at the mutex level). Like Approach 2, however, Approach 3 does have the additional work of 
+incrementing the atomic counter in the Add operation. Hence, compared to Approach 1 and Approach 2, 
+Approach 3 has the best performance for the Count operation and would perform better for query patterns 
+that have a lot of Count operations. Approach 3 also has the disadvantage that when the Count operation
+returns, the returned value does not necessarily reflect the size of the set at that moment (because the
+stripes may have been modified but haven't updated the global counter).
+
+# ExtraCredit1
+
+Suppose we start with a StripedStringSet with x unique strings. Goroutine/thread 0 issues a Count() call,
+while threads 1 through N issues Add() calls with distinct strings. Suppose that threads 1 to N each
+adds 1 string only.
+
+If we use Strategy 1 or 2, Count() in thread 0 may return anything from x to x + N. This is because the
+moment of Count() returning depends on the order in which the locks are acquired. If thread 0 acquires
+the read locks before any of the other threads acquire the write lock, we will get x. If thread 0 acquires
+the read lock of a stripe after another thread has modified the stripe, then we will get anything between
+x + 1 to x + N. If we use Strategy 3, because the atomic counter is first-come-first-serve, the returning value of Count()
+also depends on the order of the goroutines. By the same logic, we may also return anything from x to x + N.
+
+Similarly, if we use LockedStringSet, Count() could also return anything from x to x + N, depending on the
+order in which the goroutines acquire the lock.
+
+For LockedStringSet, we may define "correctness" as returning the accurate/correct value at the moment when
+Count() returns. This is always guaranteed for LockedStringSet. However, defining "correctness" for StripedStringSet
+is more tricky: because we are locking each stripe separately, it is possible that we lock one stripe, read
+its count, then another goroutine adds a string to this stripe and increments the counter before Count() is
+able to return. Hence, we can only define "correctness" to be on a per-stripe level: the count value that we
+get from each stripe is guaranteed to be correct at the moment that we access that stripe. This is one
+disadvantage of using striping; we are essentially trading correctness for efficiency.
 
 # Part C3
 
