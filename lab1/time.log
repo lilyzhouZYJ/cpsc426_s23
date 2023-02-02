@@ -1,0 +1,17 @@
+ESTIMATE of time to complete assignment: 10 hours
+
+      Time     Time
+Date  Started  Spent Work completed
+----  -------  ----  --------------
+02/01  9:30pm  1:30  read intro to gRPC and protobuf; wrote A1 to A3
+                     (did not do discussion questions)
+               ----
+               TODO  TOTAL time spent
+
+I discussed my solution with:
+
+Discussion (major conceptual and coding difficulties):
+
+TODO:
+- potentially refactor server_lib.go
+- discussion questions of Part A
