@@ -1,0 +1,14 @@
+# A1
+What networking/socket API(s) do you think Dial corresponds to or is similar to?
+
+Dial seems similar to the connect() in the socket API. connect() establishes a communication
+link to a specific remote host (identified by its address) via a socket (identified by its file
+descriptor). This is similar to Dial, which takes a server address and port number to establish
+a gRPC channel.
+
+# A2
+In what cases do you think Dial() will fail? What status code do you think you should return for these cases?
+
+Dial() may fail when the server is down, or when the port is occupied, or if the caller does not
+have valid credentials. In the first two scenarios, the status code would be Unavailable (14). In
+the third scenario, the status code would be Unauthenticated (7).
