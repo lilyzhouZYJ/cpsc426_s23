@@ -34,7 +34,10 @@ type VideoRecServiceOptions struct {
 type VideoRecServiceServer struct {
 	pb.UnimplementedVideoRecServiceServer
 	options VideoRecServiceOptions
-	// Add any data you want here
+	
+	useMock bool
+	mockUserServiceClient *umc.MockUserServiceClient
+	mockVideoServiceClient *vmc.MockVideoServiceClient
 }
 
 func MakeVideoRecServiceServer(options VideoRecServiceOptions) (*VideoRecServiceServer, error) {
@@ -49,10 +52,13 @@ func MakeVideoRecServiceServerWithMocks(
 	mockUserServiceClient *umc.MockUserServiceClient,
 	mockVideoServiceClient *vmc.MockVideoServiceClient,
 ) *VideoRecServiceServer {
-	// Implement your own logic here
+
 	return &VideoRecServiceServer{
 		options: options,
-		// ...
+
+		useMock: true,
+		mockUserServiceClient: mockUserServiceClient,
+		mockVideoServiceClient: mockVideoServiceClient,
 	}
 }
 
@@ -68,20 +74,27 @@ func (server *VideoRecServiceServer) GetTopVideos(
 
 	// I. Fetch the user and users they subscribe to
 
-	// (1) Create gRPC channel for UserService
-	var optsUser []grpc.DialOption
-	optsUser = append(optsUser, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	
-	connUser, err := grpc.Dial(server.options.UserServiceAddr, optsUser...)
-	if err != nil {
-		return nil, handleError(err, "fail to dial")
+	// (1) Create UserService clients
+	var userClient upb.UserServiceClient
+	if server.useMock {
+		// Use the mock client
+		userClient = server.mockUserServiceClient
+	} else {
+		// Create gRPC channel for UserService
+		var optsUser []grpc.DialOption
+		optsUser = append(optsUser, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		
+		connUser, err := grpc.Dial(server.options.UserServiceAddr, optsUser...)
+		if err != nil {
+			return nil, handleError(err, "fail to dial")
+		}
+		defer connUser.Close()
+
+		// Create UserService client stub
+		userClient = upb.NewUserServiceClient(connUser)
 	}
-	defer connUser.Close()
-
-	// (2) Create UserService client stub
-	userClient := upb.NewUserServiceClient(connUser)
-
-	// (3) Fetch user info for the original user
+	
+	// (2) Fetch user info for the original user
 	orig_user_id := req.GetUserId()
 	origUserResponse, err := userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: []uint64{orig_user_id}})
 	if err != nil {
@@ -93,10 +106,10 @@ func (server *VideoRecServiceServer) GetTopVideos(
 	}
 	orig_user_info := orig_user_infos[0]
 
-	// (4) Fetch users that the orig user subscribes to
+	// (3) Fetch users that the orig user subscribes to
 	subscribed_to := orig_user_info.GetSubscribedTo()
 
-	// (5) Fetch the liked videos of the subscribe users
+	// (4) Fetch the liked videos of the subscribe users
 	subscribed_user_infos := make([]*upb.UserInfo, 0)
 	for _, s := range subscribed_to {
 		likedVideoResponse, err := userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: []uint64{s}})
@@ -122,20 +135,26 @@ func (server *VideoRecServiceServer) GetTopVideos(
 
 	// II. Fetch the video infos for the liked videos
 
-	// (1) Create gRPC channel for VideoService
-	var optsVideo []grpc.DialOption
-	optsVideo = append(optsVideo, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	// (1) Create VideoService client
+	var videoClient vpb.VideoServiceClient
+	if server.useMock {
+		videoClient = server.mockVideoServiceClient
+	} else {
+		// Create gRPC channel for VideoService
+		var optsVideo []grpc.DialOption
+		optsVideo = append(optsVideo, grpc.WithTransportCredentials(insecure.NewCredentials()))
 
-	connVideo, err := grpc.Dial(server.options.VideoServiceAddr, optsVideo...)
-	if err != nil {
-		return nil, handleError(err, "fail to dial")
+		connVideo, err := grpc.Dial(server.options.VideoServiceAddr, optsVideo...)
+		if err != nil {
+			return nil, handleError(err, "fail to dial")
+		}
+		defer connVideo.Close()
+
+		// Create VideoService client stub
+		videoClient = vpb.NewVideoServiceClient(connVideo)
 	}
-	defer connVideo.Close()
 
-	// (2) Create VideoService client stub
-	videoClient := vpb.NewVideoServiceClient(connVideo)
-
-	// (3) Fetch video infos for liked videos
+	// (2) Fetch video infos for liked videos
 	video_infos := make([]*vpb.VideoInfo, 0)
 	for _, v := range liked_videos {
 		videoResponse, err := videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: []uint64{v}})
