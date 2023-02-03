@@ -12,3 +12,17 @@ In what cases do you think Dial() will fail? What status code do you think you s
 Dial() may fail when the server is down, or when the port is occupied, or if the caller does not
 have valid credentials. In the first two scenarios, the status code would be Unavailable (14). In
 the third scenario, the status code would be Unauthenticated (7).
+
+
+
+
+# A6
+
+User picked for me:
+- Name: Abbott4742
+- UserId: 202549
+- Email: averymills@bechtelar.io
+- Profile URL: https://user-service.localhost/profile/202549
+
+Top recommended video:
+- Video id=1386, title="ugly Corn", author=Adolfo Runolfsdottir, url=https://video-data.localhost/blob/1386
