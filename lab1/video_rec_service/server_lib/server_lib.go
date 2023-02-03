@@ -95,7 +95,7 @@ func (server *VideoRecServiceServer) GetTopVideos(
 	}
 	
 	// (2) Fetch user info for the original user
-	orig_user_id := req.GetUserId()
+	orig_user_id := req.GetUserId()	
 	origUserResponse, err := userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: []uint64{orig_user_id}})
 	if err != nil {
 		return nil, handleError(err, "fail to fetch user info on orig user")
@@ -111,15 +111,41 @@ func (server *VideoRecServiceServer) GetTopVideos(
 
 	// (4) Fetch the liked videos of the subscribe users
 	subscribed_user_infos := make([]*upb.UserInfo, 0)
-	for _, s := range subscribed_to {
-		likedVideoResponse, err := userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: []uint64{s}})
-		if err != nil {
-			return nil, handleError(err, "fail to fetch liked videos")
+
+	// Batching:
+	batchSize := server.options.MaxBatchSize
+	if batchSize > 0 {
+		// Batching
+		for len(subscribed_to) > 0 {
+			// Slice for next request
+			sub := make([]uint64, 0)
+
+			if len(subscribed_to) > batchSize {
+				sub = subscribed_to[:batchSize]
+				subscribed_to = subscribed_to[batchSize:]
+			} else {
+				sub = subscribed_to
+				subscribed_to = make([]uint64, 0)
+			}
+
+			likedVideoResponse, err := userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: sub})
+			if err != nil {
+				return nil, handleError(err, "fail to fetch liked videos in batch")
+			}
+
+			subscribed_user_infos = append(subscribed_user_infos, likedVideoResponse.GetUsers()...)
 		}
-
-		subscribed_user_infos = append(subscribed_user_infos, likedVideoResponse.GetUsers()...)
+	} else {
+		// No batching
+		for _, s := range subscribed_to {
+			likedVideoResponse, err := userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: []uint64{s}})
+			if err != nil {
+				return nil, handleError(err, "fail to fetch liked videos")
+			}
+	
+			subscribed_user_infos = append(subscribed_user_infos, likedVideoResponse.GetUsers()...)
+		}
 	}
-
 	liked_videos := make([]uint64, 0)
 	liked_videos_map := make(map[uint64]bool) // to make sure there are no duplicates
 
@@ -156,13 +182,39 @@ func (server *VideoRecServiceServer) GetTopVideos(
 
 	// (2) Fetch video infos for liked videos
 	video_infos := make([]*vpb.VideoInfo, 0)
-	for _, v := range liked_videos {
-		videoResponse, err := videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: []uint64{v}})
-		if err != nil {
-			return nil, handleError(err, "fail to fetch video infos")
-		}
 
-		video_infos = append(video_infos, videoResponse.GetVideos()...)
+	// Batching:
+	if batchSize > 0 {
+		// Batching
+		for len(liked_videos) > 0 {
+			// Slice for next request
+			vids := make([]uint64, 0)
+
+			if len(liked_videos) > batchSize {
+				vids = liked_videos[:batchSize]
+				liked_videos = liked_videos[batchSize:]
+			} else {
+				vids = liked_videos
+				liked_videos = make([]uint64, 0)
+			}
+
+			videoResponse, err := videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: vids})
+			if err != nil {
+				return nil, handleError(err, "fail to fetch video infos")
+			}
+	
+			video_infos = append(video_infos, videoResponse.GetVideos()...)
+		}
+	} else {
+		// No batching
+		for _, v := range liked_videos {
+			videoResponse, err := videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: []uint64{v}})
+			if err != nil {
+				return nil, handleError(err, "fail to fetch video infos")
+			}
+	
+			video_infos = append(video_infos, videoResponse.GetVideos()...)
+		}
 	}
 
 	// III. Rank videos
