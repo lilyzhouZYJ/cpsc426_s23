@@ -103,11 +103,17 @@ func (server *VideoRecServiceServer) GetTopVideos(
 		)
 	}
 	subscribed_user_infos []*UserInfo := likedVideoResponse.GetUsers()
+
 	liked_videos := make(uint64[], 0)
+	liked_videos_map := make(map[int]bool) // to make sure there are no duplicates
+
 	for _, subscribed_user_info := range subscribed_user_infos {
 		vids := subscribed_user_info.GetLikedVideos()
-		liked_videos = append(liked_videos, vids)
+		for _, v := range vids {
+			if _, contains := liked_videos_map[v]; !contains {
+				liked_videos_map[v] = true
+				liked_videos = append(liked_videos, v)
+			}
+		}
 	}
-
-	// TODO: make sure there are no duplicates in liked_videos
 }
