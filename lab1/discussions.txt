@@ -52,3 +52,17 @@ now_us  total_requests  total_errors    active_requests user_service_errors     
 1675629830116986        124     0       3       0       0       263.14  0.00    0
 1675629831121150        135     0       2       0       0       264.07  0.00    0
 1675629832118995        145     0       2       0       0       264.70  0.00    0
+
+
+
+# C1
+
+Why might retrying be a bad option? In what cases should you not retry a request?
+
+Retrying is an inadequate solution because services may be down for an extended period of time.
+Also, retries may increase the load on the server, causing more clients to fail and retry. This
+creates a snowball effect. Moreover, retries are a bad idea when the failure is caused by the 
+client, such as invalid authentication. We could retry a request when the failure is caused by
+a network error or server error, and when the server is not currently servicing a high number
+of requests.
+

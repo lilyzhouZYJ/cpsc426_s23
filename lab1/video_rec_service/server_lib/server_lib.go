@@ -131,8 +131,12 @@ func (server *VideoRecServiceServer) GetTopVideos(
 		
 		connUser, err := grpc.Dial(server.options.UserServiceAddr, optsUser...)
 		if err != nil {
-			defer updateStats(server, startTime, true, true, false)
-			return nil, handleError(err, "fail to dial")
+			// Retry
+			connUser, err = grpc.Dial(server.options.UserServiceAddr, optsUser...)
+			if err != nil {
+				defer updateStats(server, startTime, true, true, false)
+				return nil, handleError(err, "fail to dial")
+			}
 		}
 		defer connUser.Close()
 
@@ -144,8 +148,12 @@ func (server *VideoRecServiceServer) GetTopVideos(
 	orig_user_id := req.GetUserId()	
 	origUserResponse, err := userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: []uint64{orig_user_id}})
 	if err != nil {
-		defer updateStats(server, startTime, true, true, false)
-		return nil, handleError(err, "fail to fetch user info on orig user")
+		// Retry
+		origUserResponse, err = userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: []uint64{orig_user_id}})
+		if err != nil {
+			defer updateStats(server, startTime, true, true, false)
+			return nil, handleError(err, "fail to fetch user info on orig user")
+		}
 	}
 	orig_user_infos := origUserResponse.GetUsers() // type []*UserInfo
 	if len(orig_user_infos) != 1 {
@@ -179,8 +187,12 @@ func (server *VideoRecServiceServer) GetTopVideos(
 
 			likedVideoResponse, err := userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: sub})
 			if err != nil {
-				defer updateStats(server, startTime, true, true, false)
-				return nil, handleError(err, "fail to fetch liked videos in batch")
+				// Retry
+				likedVideoResponse, err = userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: sub})
+				if err != nil {
+					defer updateStats(server, startTime, true, true, false)
+					return nil, handleError(err, "fail to fetch liked videos in batch")
+				}
 			}
 
 			subscribed_user_infos = append(subscribed_user_infos, likedVideoResponse.GetUsers()...)
@@ -190,8 +202,12 @@ func (server *VideoRecServiceServer) GetTopVideos(
 		for _, s := range subscribed_to {
 			likedVideoResponse, err := userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: []uint64{s}})
 			if err != nil {
-				defer updateStats(server, startTime, true, true, false)
-				return nil, handleError(err, "fail to fetch liked videos")
+				// Retry
+				likedVideoResponse, err = userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: []uint64{s}})
+				if err != nil {
+					defer updateStats(server, startTime, true, true, false)
+					return nil, handleError(err, "fail to fetch liked videos")
+				}
 			}
 	
 			subscribed_user_infos = append(subscribed_user_infos, likedVideoResponse.GetUsers()...)
@@ -223,8 +239,12 @@ func (server *VideoRecServiceServer) GetTopVideos(
 
 		connVideo, err := grpc.Dial(server.options.VideoServiceAddr, optsVideo...)
 		if err != nil {
-			defer updateStats(server, startTime, true, false, true)
-			return nil, handleError(err, "fail to dial")
+			// Retry
+			connVideo, err = grpc.Dial(server.options.VideoServiceAddr, optsVideo...)
+			if err != nil {
+				defer updateStats(server, startTime, true, false, true)
+				return nil, handleError(err, "fail to dial")
+			}
 		}
 		defer connVideo.Close()
 
@@ -252,8 +272,12 @@ func (server *VideoRecServiceServer) GetTopVideos(
 
 			videoResponse, err := videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: vids})
 			if err != nil {
-				defer updateStats(server, startTime, true, false, true)
-				return nil, handleError(err, "fail to fetch video infos")
+				// Retry
+				videoResponse, err = videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: vids})
+				if err != nil {
+					defer updateStats(server, startTime, true, false, true)
+					return nil, handleError(err, "fail to fetch video infos")
+				}
 			}
 	
 			video_infos = append(video_infos, videoResponse.GetVideos()...)
@@ -263,8 +287,12 @@ func (server *VideoRecServiceServer) GetTopVideos(
 		for _, v := range liked_videos {
 			videoResponse, err := videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: []uint64{v}})
 			if err != nil {
-				defer updateStats(server, startTime, true, false, true)
-				return nil, handleError(err, "fail to fetch video infos")
+				// Retry
+				videoResponse, err = videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: []uint64{v}})
+				if err != nil {
+					defer updateStats(server, startTime, true, false, true)
+					return nil, handleError(err, "fail to fetch video infos")
+				}
 			}
 	
 			video_infos = append(video_infos, videoResponse.GetVideos()...)
