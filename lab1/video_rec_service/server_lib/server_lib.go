@@ -6,6 +6,9 @@ import (
 	"log"
 	"google.golang.org/grpc"
 	"fmt"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	umc "cs426.yale.edu/lab1/user_service/mock_client"
 	pb "cs426.yale.edu/lab1/video_rec_service/proto"
@@ -38,6 +41,16 @@ type VideoRecServiceServer struct {
 	useMock bool
 	mockUserServiceClient *umc.MockUserServiceClient
 	mockVideoServiceClient *vmc.MockVideoServiceClient
+
+	// Stats
+	numTotalRequests uint64
+	numTotalErrors uint64
+	numActiveRequests uint64
+	numUserErrors uint64
+	numVideoErrors uint64
+	totalLatency uint64
+
+	lock sync.RWMutex
 }
 
 func MakeVideoRecServiceServer(options VideoRecServiceOptions) (*VideoRecServiceServer, error) {
@@ -67,10 +80,42 @@ func handleError(err error, message string) error {
 	return status.Errorf(status.Code(err), "VideoRecService: %s, error %v\n", message, err)
 }
 
+func updateStats(
+	server *VideoRecServiceServer,
+	startTime time.Time,
+	hasError bool,
+	userError bool,
+	videoError bool,
+) {
+	// Lock
+	server.lock.Lock()
+	defer server.lock.Unlock()
+
+	// Update stats
+	server.numTotalRequests += 1
+
+	if hasError {
+		server.numTotalErrors += 1
+		if userError {
+			server.numUserErrors += 1
+		}
+		if videoError {
+			server.numVideoErrors += 1
+		}
+	}
+
+	server.totalLatency += uint64(time.Since(startTime).Milliseconds())
+	server.numActiveRequests -= 1
+}
+
 func (server *VideoRecServiceServer) GetTopVideos(
 	ctx context.Context,
 	req *pb.GetTopVideosRequest,
 ) (*pb.GetTopVideosResponse, error) {
+
+	// Update stats
+	startTime := time.Now()
+	atomic.AddUint64(&server.numActiveRequests, 1)
 
 	// I. Fetch the user and users they subscribe to
 
@@ -86,6 +131,7 @@ func (server *VideoRecServiceServer) GetTopVideos(
 		
 		connUser, err := grpc.Dial(server.options.UserServiceAddr, optsUser...)
 		if err != nil {
+			defer updateStats(server, startTime, true, true, false)
 			return nil, handleError(err, "fail to dial")
 		}
 		defer connUser.Close()
@@ -98,10 +144,13 @@ func (server *VideoRecServiceServer) GetTopVideos(
 	orig_user_id := req.GetUserId()	
 	origUserResponse, err := userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: []uint64{orig_user_id}})
 	if err != nil {
+		defer updateStats(server, startTime, true, true, false)
 		return nil, handleError(err, "fail to fetch user info on orig user")
 	}
 	orig_user_infos := origUserResponse.GetUsers() // type []*UserInfo
 	if len(orig_user_infos) != 1 {
+		// This should never happen
+		defer updateStats(server, startTime, true, false, false)
 		return nil, handleError(nil, fmt.Sprintf("incorrect number (%d) of UserInfos for orig user", len(orig_user_infos)))
 	}
 	orig_user_info := orig_user_infos[0]
@@ -130,6 +179,7 @@ func (server *VideoRecServiceServer) GetTopVideos(
 
 			likedVideoResponse, err := userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: sub})
 			if err != nil {
+				defer updateStats(server, startTime, true, true, false)
 				return nil, handleError(err, "fail to fetch liked videos in batch")
 			}
 
@@ -140,6 +190,7 @@ func (server *VideoRecServiceServer) GetTopVideos(
 		for _, s := range subscribed_to {
 			likedVideoResponse, err := userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: []uint64{s}})
 			if err != nil {
+				defer updateStats(server, startTime, true, true, false)
 				return nil, handleError(err, "fail to fetch liked videos")
 			}
 	
@@ -172,6 +223,7 @@ func (server *VideoRecServiceServer) GetTopVideos(
 
 		connVideo, err := grpc.Dial(server.options.VideoServiceAddr, optsVideo...)
 		if err != nil {
+			defer updateStats(server, startTime, true, false, true)
 			return nil, handleError(err, "fail to dial")
 		}
 		defer connVideo.Close()
@@ -200,6 +252,7 @@ func (server *VideoRecServiceServer) GetTopVideos(
 
 			videoResponse, err := videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: vids})
 			if err != nil {
+				defer updateStats(server, startTime, true, false, true)
 				return nil, handleError(err, "fail to fetch video infos")
 			}
 	
@@ -210,6 +263,7 @@ func (server *VideoRecServiceServer) GetTopVideos(
 		for _, v := range liked_videos {
 			videoResponse, err := videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: []uint64{v}})
 			if err != nil {
+				defer updateStats(server, startTime, true, false, true)
 				return nil, handleError(err, "fail to fetch video infos")
 			}
 	
@@ -248,5 +302,26 @@ func (server *VideoRecServiceServer) GetTopVideos(
 		liked_videos_ranked = liked_videos_ranked[:limit]
 	}
 
+	defer updateStats(server, startTime, false, false, false)
 	return &pb.GetTopVideosResponse{Videos: liked_videos_ranked}, nil
+}
+
+func (server *VideoRecServiceServer) GetStats(
+	ctx context.Context,
+	req *pb.GetStatsRequest,
+) (*pb.GetStatsResponse, error) {
+
+	server.lock.Lock()
+	defer server.lock.Unlock()
+	
+	response := pb.GetStatsResponse{
+		TotalRequests: server.numTotalRequests,
+		TotalErrors: server.numTotalErrors,
+		ActiveRequests: server.numActiveRequests,
+		UserServiceErrors: server.numUserErrors,
+		VideoServiceErrors: server.numVideoErrors,
+		AverageLatencyMs: float32(float64(server.totalLatency) / float64(server.numTotalRequests)),
+	}
+
+	return &response, nil
 }
