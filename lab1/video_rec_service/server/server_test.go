@@ -72,3 +72,67 @@ func TestServerBasic(t *testing.T) {
 	)
 	assert.False(t, err == nil)
 }
+
+func TestFallback(t *testing.T){
+	vrOptions := sl.VideoRecServiceOptions{
+		MaxBatchSize:    50,
+		DisableFallback: false,
+		DisableRetry:    true,
+	}
+	uClient :=
+		umc.MakeMockUserServiceClient(*usl.DefaultUserServiceOptions())
+	vClient :=
+		vmc.MakeMockVideoServiceClient(*vsl.DefaultVideoServiceOptions())
+	vrService := sl.MakeVideoRecServiceServerWithMocks(
+		vrOptions,
+		uClient,
+		vClient,
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	vClient.SetInjectionConfig(ctx, &fipb.SetInjectionConfigRequest{
+		Config: &fipb.InjectionConfig{
+			// fail every request
+			FailureRate: 1,
+		},
+	})
+
+	var userId uint64 = 204054
+	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, err := vrService.GetTopVideos(
+		ctx,
+		&pb.GetTopVideosRequest{UserId: userId, Limit: 5},
+	)
+	assert.True(t, err != nil)
+}
+
+func TestBatchSize(t *testing.T){
+	vrOptions := sl.VideoRecServiceOptions{
+		MaxBatchSize:    50,
+		DisableFallback: true,
+		DisableRetry:    true,
+	}
+	uOptions := usl.UserServiceOptions{MaxBatchSize: 10}
+	vOptions := vsl.VideoServiceOptions{MaxBatchSize: 10}
+
+	uClient := umc.MakeMockUserServiceClient(uOptions)
+	vClient := vmc.MakeMockVideoServiceClient(vOptions)
+
+	vrService := sl.MakeVideoRecServiceServerWithMocks(
+		vrOptions,
+		uClient,
+		vClient,
+	)
+
+	var userId uint64 = 204054
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := vrService.GetTopVideos(
+		ctx,
+		&pb.GetTopVideosRequest{UserId: userId, Limit: 5},
+	)
+	assert.True(t, err != nil)
+}

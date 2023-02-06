@@ -92,6 +92,7 @@ func UpdateTrendingVideosInternal(
 	server *VideoRecServiceServer,
 	batchSize int,
 ) error {
+
 	// (1) Create VideoService client
 	var videoClient vpb.VideoServiceClient
 	if server.useMock {
@@ -253,8 +254,11 @@ func updateStats(
 	server.totalLatency += uint64(time.Since(startTime).Milliseconds())
 	server.numActiveRequests -= 1
 
+	log.Printf("USESTALE %d", useStale)
 	if useStale {
+		log.Printf("USING STALE")
 		server.numStaleResponses += 1
+		log.Printf("STALE COUNT %d", server.numStaleResponses)
 	}
 }
 
@@ -268,12 +272,12 @@ func (server *VideoRecServiceServer) GetTopVideos(
 	atomic.AddUint64(&server.numActiveRequests, 1)
 
 	// Fetch trending videos and update cache
-	server.lock.Lock()
+	server.trendingLock.Lock()
 	if !server.trendingInitialized && !server.options.DisableFallback {
-		server.trendingInitialized = true
 		go UpdateTrendingVideos(ctx, server)
+		server.trendingInitialized = true
 	}
-	server.lock.Unlock()
+	server.trendingLock.Unlock()
 
 	// I. Fetch the user and users they subscribe to
 
@@ -290,20 +294,22 @@ func (server *VideoRecServiceServer) GetTopVideos(
 		connUser, err := grpc.Dial(server.options.UserServiceAddr, optsUser...)
 		if err != nil {
 			// Retry
-			connUser, err = grpc.Dial(server.options.UserServiceAddr, optsUser...)
-			if err != nil {
-				if !server.options.DisableFallback {
-					// Use fallback
-					cachedVideos, _ := GetCachedTrendingVideos(server)
-					if cachedVideos != nil {
-						defer updateStats(server, startTime, false, false, false, true)
-						return &pb.GetTopVideosResponse{Videos: cachedVideos}, nil
+			if !server.options.DisableRetry {
+				connUser, err = grpc.Dial(server.options.UserServiceAddr, optsUser...)
+				if err != nil {
+					if !server.options.DisableFallback {
+						// Use fallback
+						cachedVideos, _ := GetCachedTrendingVideos(server)
+						if cachedVideos != nil {
+							defer updateStats(server, startTime, false, false, false, true)
+							return &pb.GetTopVideosResponse{Videos: cachedVideos}, nil
+						}
 					}
 				}
-
-				defer updateStats(server, startTime, true, true, false, false)
-				return nil, handleError(err, "fail to dial")
 			}
+			
+			defer updateStats(server, startTime, true, true, false, false)
+			return nil, handleError(err, "fail to dial")
 		}
 		defer connUser.Close()
 
@@ -316,20 +322,22 @@ func (server *VideoRecServiceServer) GetTopVideos(
 	origUserResponse, err := userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: []uint64{orig_user_id}})
 	if err != nil {
 		// Retry
-		origUserResponse, err = userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: []uint64{orig_user_id}})
-		if err != nil {
-			if !server.options.DisableFallback {
-				// Use fallback
-				cachedVideos, _ := GetCachedTrendingVideos(server)
-				if cachedVideos != nil {
-					defer updateStats(server, startTime, false, false, false, true)
-					return &pb.GetTopVideosResponse{Videos: cachedVideos}, nil
+		if server.options.DisableRetry {
+			origUserResponse, err = userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: []uint64{orig_user_id}})
+			if err != nil {
+				if !server.options.DisableFallback {
+					// Use fallback
+					cachedVideos, _ := GetCachedTrendingVideos(server)
+					if cachedVideos != nil {
+						defer updateStats(server, startTime, false, false, false, true)
+						return &pb.GetTopVideosResponse{Videos: cachedVideos}, nil
+					}
 				}
 			}
-
-			defer updateStats(server, startTime, true, true, false, false)
-			return nil, handleError(err, "fail to fetch user info on orig user")
 		}
+
+		defer updateStats(server, startTime, true, true, false, false)
+		return nil, handleError(err, "fail to fetch user info on orig user")		
 	}
 	orig_user_infos := origUserResponse.GetUsers() // type []*UserInfo
 	if len(orig_user_infos) != 1 {
@@ -372,20 +380,22 @@ func (server *VideoRecServiceServer) GetTopVideos(
 			likedVideoResponse, err := userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: sub})
 			if err != nil {
 				// Retry
-				likedVideoResponse, err = userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: sub})
-				if err != nil {
-					if !server.options.DisableFallback {
-						// Use fallback
-						cachedVideos, _ := GetCachedTrendingVideos(server)
-						if cachedVideos != nil {
-							defer updateStats(server, startTime, false, false, false, true)
-							return &pb.GetTopVideosResponse{Videos: cachedVideos}, nil
+				if server.options.DisableRetry {
+					likedVideoResponse, err = userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: sub})
+					if err != nil {
+						if !server.options.DisableFallback {
+							// Use fallback
+							cachedVideos, _ := GetCachedTrendingVideos(server)
+							if cachedVideos != nil {
+								defer updateStats(server, startTime, false, false, false, true)
+								return &pb.GetTopVideosResponse{Videos: cachedVideos}, nil
+							}
 						}
 					}
-
-					defer updateStats(server, startTime, true, true, false, false)
-					return nil, handleError(err, "fail to fetch liked videos in batch")
 				}
+
+				defer updateStats(server, startTime, true, true, false, false)
+				return nil, handleError(err, "fail to fetch liked videos in batch")				
 			}
 
 			subscribed_user_infos = append(subscribed_user_infos, likedVideoResponse.GetUsers()...)
@@ -396,20 +406,22 @@ func (server *VideoRecServiceServer) GetTopVideos(
 			likedVideoResponse, err := userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: []uint64{s}})
 			if err != nil {
 				// Retry
-				likedVideoResponse, err = userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: []uint64{s}})
-				if err != nil {
-					if !server.options.DisableFallback {
-						// Use fallback
-						cachedVideos, _ := GetCachedTrendingVideos(server)
-						if cachedVideos != nil {
-							defer updateStats(server, startTime, false, false, false, true)
-							return &pb.GetTopVideosResponse{Videos: cachedVideos}, nil
+				if server.options.DisableRetry {
+					likedVideoResponse, err = userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: []uint64{s}})
+					if err != nil {
+						if !server.options.DisableFallback {
+							// Use fallback
+							cachedVideos, _ := GetCachedTrendingVideos(server)
+							if cachedVideos != nil {
+								defer updateStats(server, startTime, false, false, false, true)
+								return &pb.GetTopVideosResponse{Videos: cachedVideos}, nil
+							}
 						}
 					}
-					
-					defer updateStats(server, startTime, true, true, false, false)
-					return nil, handleError(err, "fail to fetch liked videos")
 				}
+				
+				defer updateStats(server, startTime, true, true, false, false)
+				return nil, handleError(err, "fail to fetch liked videos")
 			}
 	
 			subscribed_user_infos = append(subscribed_user_infos, likedVideoResponse.GetUsers()...)
@@ -442,20 +454,22 @@ func (server *VideoRecServiceServer) GetTopVideos(
 		connVideo, err := grpc.Dial(server.options.VideoServiceAddr, optsVideo...)
 		if err != nil {
 			// Retry
-			connVideo, err = grpc.Dial(server.options.VideoServiceAddr, optsVideo...)
-			if err != nil {
-				if !server.options.DisableFallback {
-					// Use fallback
-					cachedVideos, _ := GetCachedTrendingVideos(server)
-					if cachedVideos != nil {
-						defer updateStats(server, startTime, false, false, false, true)
-						return &pb.GetTopVideosResponse{Videos: cachedVideos}, nil
+			if server.options.DisableRetry {
+				connVideo, err = grpc.Dial(server.options.VideoServiceAddr, optsVideo...)
+				if err != nil {
+					if !server.options.DisableFallback {
+						// Use fallback
+						cachedVideos, _ := GetCachedTrendingVideos(server)
+						if cachedVideos != nil {
+							defer updateStats(server, startTime, false, false, false, true)
+							return &pb.GetTopVideosResponse{Videos: cachedVideos}, nil
+						}
 					}
 				}
-		
-				defer updateStats(server, startTime, true, false, true, false)
-				return nil, handleError(err, "fail to dial")
 			}
+			
+			defer updateStats(server, startTime, true, false, true, false)
+			return nil, handleError(err, "fail to dial")
 		}
 		defer connVideo.Close()
 
@@ -484,20 +498,22 @@ func (server *VideoRecServiceServer) GetTopVideos(
 			videoResponse, err := videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: vids})
 			if err != nil {
 				// Retry
-				videoResponse, err = videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: vids})
-				if err != nil {
-					if !server.options.DisableFallback {
-						// Use fallback
-						cachedVideos, _ := GetCachedTrendingVideos(server)
-						if cachedVideos != nil {
-							defer updateStats(server, startTime, false, false, false, true)
-							return &pb.GetTopVideosResponse{Videos: cachedVideos}, nil
+				if server.options.DisableRetry {
+					videoResponse, err = videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: vids})
+					if err != nil {
+						if !server.options.DisableFallback {
+							// Use fallback
+							cachedVideos, _ := GetCachedTrendingVideos(server)
+							if cachedVideos != nil {
+								defer updateStats(server, startTime, false, false, false, true)
+								return &pb.GetTopVideosResponse{Videos: cachedVideos}, nil
+							}
 						}
 					}
-			
-					defer updateStats(server, startTime, true, false, true, false)
-					return nil, handleError(err, "fail to fetch video infos")
 				}
+				
+				defer updateStats(server, startTime, true, false, true, false)
+				return nil, handleError(err, "fail to fetch video infos")
 			}
 	
 			video_infos = append(video_infos, videoResponse.GetVideos()...)
@@ -508,20 +524,22 @@ func (server *VideoRecServiceServer) GetTopVideos(
 			videoResponse, err := videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: []uint64{v}})
 			if err != nil {
 				// Retry
-				videoResponse, err = videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: []uint64{v}})
-				if err != nil {
-					if !server.options.DisableFallback {
-						// Use fallback
-						cachedVideos, _ := GetCachedTrendingVideos(server)
-						if cachedVideos != nil {
-							defer updateStats(server, startTime, false, false, false, true)
-							return &pb.GetTopVideosResponse{Videos: cachedVideos}, nil
+				if server.options.DisableRetry {
+					videoResponse, err = videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: []uint64{v}})
+					if err != nil {
+						if !server.options.DisableFallback {
+							// Use fallback
+							cachedVideos, _ := GetCachedTrendingVideos(server)
+							if cachedVideos != nil {
+								defer updateStats(server, startTime, false, false, false, true)
+								return &pb.GetTopVideosResponse{Videos: cachedVideos}, nil
+							}
 						}
 					}
-			
-					defer updateStats(server, startTime, true, false, true, false)
-					return nil, handleError(err, "fail to fetch video infos")
 				}
+				
+				defer updateStats(server, startTime, true, false, true, false)
+				return nil, handleError(err, "fail to fetch video infos")
 			}
 	
 			video_infos = append(video_infos, videoResponse.GetVideos()...)
