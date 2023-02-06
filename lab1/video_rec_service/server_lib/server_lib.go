@@ -99,16 +99,9 @@ func UpdateTrendingVideosInternal(
 		videoClient = server.mockVideoServiceClient
 	} else {
 		// Create gRPC channel for VideoService
-		var optsVideo []grpc.DialOption
-		optsVideo = append(optsVideo, grpc.WithTransportCredentials(insecure.NewCredentials()))
-
-		connVideo, err := grpc.Dial(server.options.VideoServiceAddr, optsVideo...)
+		connVideo, err := CreateConnection(server, server.options.VideoServiceAddr)
 		if err != nil {
-			// Retry
-			connVideo, err = grpc.Dial(server.options.VideoServiceAddr, optsVideo...)
-			if err != nil {
-				return handleError(err, "fail to dial")
-			}
+			return handleError(err, "fail to dial to update trending videos")
 		}
 		defer connVideo.Close()
 
@@ -262,6 +255,108 @@ func updateStats(
 	}
 }
 
+// Helper function
+func CreateConnection(server *VideoRecServiceServer, addr string) (*grpc.ClientConn, error) {
+	var opts []grpc.DialOption
+	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	
+	conn, err := grpc.Dial(addr, opts...)
+	if err != nil {
+		// Retry
+		if !server.options.DisableRetry {
+			conn, err = grpc.Dial(addr, opts...)
+		}
+
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return conn, err
+}
+
+// Helper function
+func FetchUserInfos(
+	ctx context.Context,
+	server *VideoRecServiceServer,
+	userClient upb.UserServiceClient,
+	userIds []uint64, 
+) ([]*upb.UserInfo, error) {
+
+	maxBatchSize := server.options.MaxBatchSize
+	userInfos := make([]*upb.UserInfo, 0)
+
+	for len(userIds) > 0 {
+		// Slice to fix into batch size
+		batch := make([]uint64, 0)
+
+		if len(userIds) > maxBatchSize {
+			batch = userIds[:maxBatchSize]
+			userIds = userIds[maxBatchSize:]
+		} else {
+			batch = userIds
+			userIds = make([]uint64, 0)
+		}
+
+		userResponse, err := userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: batch})
+		if err != nil {
+			// Retry
+			if !server.options.DisableRetry {
+				userResponse, err = userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: batch})
+			}
+
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		userInfos = append(userInfos, userResponse.GetUsers()...)
+	}
+
+	return userInfos, nil
+}
+
+// Helper function
+func FetchVideoInfos(
+	ctx context.Context,
+	server *VideoRecServiceServer,
+	videoClient vpb.VideoServiceClient,
+	videoIds []uint64, 
+) ([]*vpb.VideoInfo, error) {
+
+	maxBatchSize := server.options.MaxBatchSize
+	videoInfos := make([]*vpb.VideoInfo, 0)
+
+	for len(videoIds) > 0 {
+		// Slice to fix into batch size
+		batch := make([]uint64, 0)
+
+		if len(videoIds) > maxBatchSize {
+			batch = videoIds[:maxBatchSize]
+			videoIds = videoIds[maxBatchSize:]
+		} else {
+			batch = videoIds
+			videoIds = make([]uint64, 0)
+		}
+
+		videoResponse, err := videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: batch})
+		if err != nil {
+			// Retry
+			if !server.options.DisableRetry {
+				videoResponse, err = videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: batch})
+			}
+
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		videoInfos = append(videoInfos, videoResponse.GetVideos()...)
+	}
+
+	return videoInfos, nil
+}
+
 func (server *VideoRecServiceServer) GetTopVideos(
 	ctx context.Context,
 	req *pb.GetTopVideosRequest,
@@ -288,28 +383,19 @@ func (server *VideoRecServiceServer) GetTopVideos(
 		userClient = server.mockUserServiceClient
 	} else {
 		// Create gRPC channel for UserService
-		var optsUser []grpc.DialOption
-		optsUser = append(optsUser, grpc.WithTransportCredentials(insecure.NewCredentials()))
-		
-		connUser, err := grpc.Dial(server.options.UserServiceAddr, optsUser...)
+		connUser, err := CreateConnection(server, server.options.UserServiceAddr)
 		if err != nil {
-			// Retry
-			if !server.options.DisableRetry {
-				connUser, err = grpc.Dial(server.options.UserServiceAddr, optsUser...)
-				if err != nil {
-					if !server.options.DisableFallback {
-						// Use fallback
-						cachedVideos, _ := GetCachedTrendingVideos(server)
-						if cachedVideos != nil {
-							defer updateStats(server, startTime, false, false, false, true)
-							return &pb.GetTopVideosResponse{Videos: cachedVideos}, nil
-						}
-					}
+			// Fallback
+			if !server.options.DisableFallback {
+				cachedVideos, _ := GetCachedTrendingVideos(server)
+				if cachedVideos != nil {
+					defer updateStats(server, startTime, false, false, false, true)
+					return &pb.GetTopVideosResponse{Videos: cachedVideos, StaleResponse: true}, nil
 				}
 			}
-			
+
 			defer updateStats(server, startTime, true, true, false, false)
-			return nil, handleError(err, "fail to dial")
+			return nil, handleError(err, "fail to dial to UserService")
 		}
 		defer connUser.Close()
 
@@ -318,124 +404,66 @@ func (server *VideoRecServiceServer) GetTopVideos(
 	}
 	
 	// (2) Fetch user info for the original user
-	orig_user_id := req.GetUserId()	
-	origUserResponse, err := userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: []uint64{orig_user_id}})
+	origUserId := req.GetUserId()
+	origUserInfos, err := FetchUserInfos(ctx, server, userClient, []uint64{origUserId})
 	if err != nil {
-		// Retry
-		if server.options.DisableRetry {
-			origUserResponse, err = userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: []uint64{orig_user_id}})
-			if err != nil {
-				if !server.options.DisableFallback {
-					// Use fallback
-					cachedVideos, _ := GetCachedTrendingVideos(server)
-					if cachedVideos != nil {
-						defer updateStats(server, startTime, false, false, false, true)
-						return &pb.GetTopVideosResponse{Videos: cachedVideos}, nil
-					}
-				}
+		// Fallback
+		if !server.options.DisableFallback {
+			cachedVideos, _ := GetCachedTrendingVideos(server)
+			if cachedVideos != nil {
+				defer updateStats(server, startTime, false, false, false, true)
+				return &pb.GetTopVideosResponse{Videos: cachedVideos, StaleResponse: true}, nil
 			}
 		}
 
 		defer updateStats(server, startTime, true, true, false, false)
-		return nil, handleError(err, "fail to fetch user info on orig user")		
+		return nil, handleError(err, "fail to fetch user info on orig user")
 	}
-	orig_user_infos := origUserResponse.GetUsers() // type []*UserInfo
-	if len(orig_user_infos) != 1 {
+
+	if len(origUserInfos) != 1 {
 		// This should never happen
 		if !server.options.DisableFallback {
 			// Use fallback
 			cachedVideos, _ := GetCachedTrendingVideos(server)
 			if cachedVideos != nil {
 				defer updateStats(server, startTime, false, false, false, true)
-				return &pb.GetTopVideosResponse{Videos: cachedVideos}, nil
+				return &pb.GetTopVideosResponse{Videos: cachedVideos, StaleResponse: true}, nil
 			}
 		}
 		defer updateStats(server, startTime, true, false, false, false)
-		return nil, handleError(nil, fmt.Sprintf("incorrect number (%d) of UserInfos for orig user", len(orig_user_infos)))
+		return nil, handleError(nil, fmt.Sprintf("incorrect number (%d) of UserInfos for orig user", len(origUserInfos)))
 	}
-	orig_user_info := orig_user_infos[0]
+	origUserInfo := origUserInfos[0]
 
 	// (3) Fetch users that the orig user subscribes to
-	subscribed_to := orig_user_info.GetSubscribedTo()
+	subscribedTo := origUserInfo.GetSubscribedTo()
 
-	// (4) Fetch the liked videos of the subscribe users
-	subscribed_user_infos := make([]*upb.UserInfo, 0)
-
-	// Batching:
-	batchSize := server.options.MaxBatchSize
-	if batchSize > 0 {
-		// Batching
-		for len(subscribed_to) > 0 {
-			// Slice for next request
-			sub := make([]uint64, 0)
-
-			if len(subscribed_to) > batchSize {
-				sub = subscribed_to[:batchSize]
-				subscribed_to = subscribed_to[batchSize:]
-			} else {
-				sub = subscribed_to
-				subscribed_to = make([]uint64, 0)
+	// (4) Fetch the UserInfos of subscribe-to users
+	subscribedUserInfos, err := FetchUserInfos(ctx, server, userClient, subscribedTo)
+	if err != nil {
+		// Fallback
+		if !server.options.DisableFallback {
+			cachedVideos, _ := GetCachedTrendingVideos(server)
+			if cachedVideos != nil {
+				defer updateStats(server, startTime, false, false, false, true)
+				return &pb.GetTopVideosResponse{Videos: cachedVideos, StaleResponse: true}, nil
 			}
-
-			likedVideoResponse, err := userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: sub})
-			if err != nil {
-				// Retry
-				if server.options.DisableRetry {
-					likedVideoResponse, err = userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: sub})
-					if err != nil {
-						if !server.options.DisableFallback {
-							// Use fallback
-							cachedVideos, _ := GetCachedTrendingVideos(server)
-							if cachedVideos != nil {
-								defer updateStats(server, startTime, false, false, false, true)
-								return &pb.GetTopVideosResponse{Videos: cachedVideos}, nil
-							}
-						}
-					}
-				}
-
-				defer updateStats(server, startTime, true, true, false, false)
-				return nil, handleError(err, "fail to fetch liked videos in batch")				
-			}
-
-			subscribed_user_infos = append(subscribed_user_infos, likedVideoResponse.GetUsers()...)
 		}
-	} else {
-		// No batching
-		for _, s := range subscribed_to {
-			likedVideoResponse, err := userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: []uint64{s}})
-			if err != nil {
-				// Retry
-				if server.options.DisableRetry {
-					likedVideoResponse, err = userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: []uint64{s}})
-					if err != nil {
-						if !server.options.DisableFallback {
-							// Use fallback
-							cachedVideos, _ := GetCachedTrendingVideos(server)
-							if cachedVideos != nil {
-								defer updateStats(server, startTime, false, false, false, true)
-								return &pb.GetTopVideosResponse{Videos: cachedVideos}, nil
-							}
-						}
-					}
-				}
-				
-				defer updateStats(server, startTime, true, true, false, false)
-				return nil, handleError(err, "fail to fetch liked videos")
-			}
-	
-			subscribed_user_infos = append(subscribed_user_infos, likedVideoResponse.GetUsers()...)
-		}
+
+		defer updateStats(server, startTime, true, true, false, false)
+		return nil, handleError(err, "fail to fetch liked videos of the subscribe users")		
 	}
-	liked_videos := make([]uint64, 0)
-	liked_videos_map := make(map[uint64]bool) // to make sure there are no duplicates
 
-	for _, subscribed_user_info := range subscribed_user_infos {
-		vids := subscribed_user_info.GetLikedVideos()
+	// (5) Fetch the liked videos of subscribe-to users
+	likedVideos := make([]uint64, 0)
+	LikedVideosMap := make(map[uint64]bool) // to make sure there are no duplicates
+
+	for _, userInfo := range subscribedUserInfos {
+		vids := userInfo.GetLikedVideos()
 		for _, v := range vids {
-			if _, contains := liked_videos_map[v]; !contains {
-				liked_videos_map[v] = true
-				liked_videos = append(liked_videos, v)
+			if _, contains := LikedVideosMap[v]; !contains {
+				LikedVideosMap[v] = true
+				likedVideos = append(likedVideos, v)
 			}
 		}
 	}
@@ -448,28 +476,19 @@ func (server *VideoRecServiceServer) GetTopVideos(
 		videoClient = server.mockVideoServiceClient
 	} else {
 		// Create gRPC channel for VideoService
-		var optsVideo []grpc.DialOption
-		optsVideo = append(optsVideo, grpc.WithTransportCredentials(insecure.NewCredentials()))
-
-		connVideo, err := grpc.Dial(server.options.VideoServiceAddr, optsVideo...)
+		connVideo, err := CreateConnection(server, server.options.VideoServiceAddr)
 		if err != nil {
-			// Retry
-			if server.options.DisableRetry {
-				connVideo, err = grpc.Dial(server.options.VideoServiceAddr, optsVideo...)
-				if err != nil {
-					if !server.options.DisableFallback {
-						// Use fallback
-						cachedVideos, _ := GetCachedTrendingVideos(server)
-						if cachedVideos != nil {
-							defer updateStats(server, startTime, false, false, false, true)
-							return &pb.GetTopVideosResponse{Videos: cachedVideos}, nil
-						}
-					}
+			// Fallback
+			if !server.options.DisableFallback {
+				cachedVideos, _ := GetCachedTrendingVideos(server)
+				if cachedVideos != nil {
+					defer updateStats(server, startTime, false, false, false, true)
+					return &pb.GetTopVideosResponse{Videos: cachedVideos, StaleResponse: true}, nil
 				}
 			}
-			
+
 			defer updateStats(server, startTime, true, false, true, false)
-			return nil, handleError(err, "fail to dial")
+			return nil, handleError(err, "fail to dial to VideoService")
 		}
 		defer connVideo.Close()
 
@@ -478,72 +497,19 @@ func (server *VideoRecServiceServer) GetTopVideos(
 	}
 	
 	// (2) Fetch video infos for liked videos
-	video_infos := make([]*vpb.VideoInfo, 0)
-
-	// Batching:
-	if batchSize > 0 {
-		// Batching
-		for len(liked_videos) > 0 {
-			// Slice for next request
-			vids := make([]uint64, 0)
-
-			if len(liked_videos) > batchSize {
-				vids = liked_videos[:batchSize]
-				liked_videos = liked_videos[batchSize:]
-			} else {
-				vids = liked_videos
-				liked_videos = make([]uint64, 0)
+	videoInfos, err := FetchVideoInfos(ctx, server, videoClient, likedVideos)
+	if err != nil {
+		// Fallback
+		if !server.options.DisableFallback {
+			cachedVideos, _ := GetCachedTrendingVideos(server)
+			if cachedVideos != nil {
+				defer updateStats(server, startTime, false, false, false, true)
+				return &pb.GetTopVideosResponse{Videos: cachedVideos, StaleResponse: true}, nil
 			}
-
-			videoResponse, err := videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: vids})
-			if err != nil {
-				// Retry
-				if server.options.DisableRetry {
-					videoResponse, err = videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: vids})
-					if err != nil {
-						if !server.options.DisableFallback {
-							// Use fallback
-							cachedVideos, _ := GetCachedTrendingVideos(server)
-							if cachedVideos != nil {
-								defer updateStats(server, startTime, false, false, false, true)
-								return &pb.GetTopVideosResponse{Videos: cachedVideos}, nil
-							}
-						}
-					}
-				}
-				
-				defer updateStats(server, startTime, true, false, true, false)
-				return nil, handleError(err, "fail to fetch video infos")
-			}
-	
-			video_infos = append(video_infos, videoResponse.GetVideos()...)
 		}
-	} else {
-		// No batching
-		for _, v := range liked_videos {
-			videoResponse, err := videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: []uint64{v}})
-			if err != nil {
-				// Retry
-				if server.options.DisableRetry {
-					videoResponse, err = videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: []uint64{v}})
-					if err != nil {
-						if !server.options.DisableFallback {
-							// Use fallback
-							cachedVideos, _ := GetCachedTrendingVideos(server)
-							if cachedVideos != nil {
-								defer updateStats(server, startTime, false, false, false, true)
-								return &pb.GetTopVideosResponse{Videos: cachedVideos}, nil
-							}
-						}
-					}
-				}
-				
-				defer updateStats(server, startTime, true, false, true, false)
-				return nil, handleError(err, "fail to fetch video infos")
-			}
-	
-			video_infos = append(video_infos, videoResponse.GetVideos()...)
-		}
+
+		defer updateStats(server, startTime, true, false, true, false)
+		return nil, handleError(err, "fail to fetch video infos of liked videos")
 	}
 
 	// III. Rank videos
@@ -552,33 +518,33 @@ func (server *VideoRecServiceServer) GetTopVideos(
 	ranker := ranker.BcryptRanker{}
 
 	// (2) Fetch original user's UserCoefficient
-	orig_user_coefficient := orig_user_info.GetUserCoefficients()
+	origUserCoefficient := origUserInfo.GetUserCoefficients()
 
 	// (3) Rank liked videos
-	liked_videos_ranked := make([]*vpb.VideoInfo, 0)
-	liked_videos_ranked_map := make(map[*vpb.VideoInfo]uint64)
+	likedVideosRanked := make([]*vpb.VideoInfo, 0)
+	likedVideosRankedMap := make(map[*vpb.VideoInfo]uint64)
 
-	for _, v := range video_infos {
+	for _, v := range videoInfos {
 		// Compute rank for v
-		video_coefficient := v.GetVideoCoefficients()
-		rank := ranker.Rank(orig_user_coefficient, video_coefficient)
+		videoCoefficient := v.GetVideoCoefficients()
+		rank := ranker.Rank(origUserCoefficient, videoCoefficient)
 
-		liked_videos_ranked = append(liked_videos_ranked, v)
-		liked_videos_ranked_map[v] = rank
+		likedVideosRanked = append(likedVideosRanked, v)
+		likedVideosRankedMap[v] = rank
 	}
 
-	sort.SliceStable(liked_videos_ranked, func(i, j int) bool {
-        return liked_videos_ranked_map[liked_videos_ranked[i]] > liked_videos_ranked_map[liked_videos_ranked[j]]
+	sort.SliceStable(likedVideosRanked, func(i, j int) bool {
+        return likedVideosRankedMap[likedVideosRanked[i]] > likedVideosRankedMap[likedVideosRanked[j]]
     })
 
 	// (4) Truncate the list
 	limit := req.GetLimit()
-	if limit > 0 && limit <= int32(len(liked_videos_ranked)) {
-		liked_videos_ranked = liked_videos_ranked[:limit]
+	if limit > 0 && limit <= int32(len(likedVideosRanked)) {
+		likedVideosRanked = likedVideosRanked[:limit]
 	}
 
 	defer updateStats(server, startTime, false, false, false, false)
-	return &pb.GetTopVideosResponse{Videos: liked_videos_ranked}, nil
+	return &pb.GetTopVideosResponse{Videos: likedVideosRanked}, nil
 }
 
 func (server *VideoRecServiceServer) GetStats(

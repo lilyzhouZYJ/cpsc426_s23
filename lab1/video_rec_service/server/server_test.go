@@ -105,7 +105,7 @@ func TestFallback(t *testing.T){
 		ctx,
 		&pb.GetTopVideosRequest{UserId: userId, Limit: 5},
 	)
-	assert.True(t, err != nil)
+	assert.True(t, err == nil)
 }
 
 func TestBatchSize(t *testing.T){
