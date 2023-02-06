@@ -247,11 +247,8 @@ func updateStats(
 	server.totalLatency += uint64(time.Since(startTime).Milliseconds())
 	server.numActiveRequests -= 1
 
-	log.Printf("USESTALE %d", useStale)
 	if useStale {
-		log.Printf("USING STALE")
 		server.numStaleResponses += 1
-		log.Printf("STALE COUNT %d", server.numStaleResponses)
 	}
 }
 

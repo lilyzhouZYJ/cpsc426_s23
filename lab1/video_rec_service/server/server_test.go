@@ -136,3 +136,147 @@ func TestBatchSize(t *testing.T){
 	)
 	assert.True(t, err != nil)
 }
+
+func TestStatsNoFailure(t *testing.T) {
+	vrOptions := sl.VideoRecServiceOptions{MaxBatchSize: 50}
+	uClient :=
+		umc.MakeMockUserServiceClient(*usl.DefaultUserServiceOptions())
+	vClient :=
+		vmc.MakeMockVideoServiceClient(*vsl.DefaultVideoServiceOptions())
+	vrService := sl.MakeVideoRecServiceServerWithMocks(
+		vrOptions,
+		uClient,
+		vClient,
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var userId uint64 = 204054
+	for i := 0; i < 10; i++ {
+		_, err := vrService.GetTopVideos(
+			ctx,
+			&pb.GetTopVideosRequest{UserId: userId + uint64(i), Limit: 5},
+		)
+		assert.True(t, err == nil)
+	}
+
+	// Get stats
+	statsResponse, err := vrService.GetStats(ctx, &pb.GetStatsRequest{})
+	assert.True(t, err == nil)
+	assert.Equal(t, uint64(10), statsResponse.GetTotalRequests())
+	assert.Equal(t, uint64(0), statsResponse.GetTotalErrors())
+	assert.Equal(t, uint64(0), statsResponse.GetActiveRequests())
+	assert.Equal(t, uint64(0), statsResponse.GetUserServiceErrors())
+	assert.Equal(t, uint64(0), statsResponse.GetVideoServiceErrors())
+	assert.Equal(t, uint64(0), statsResponse.GetStaleResponses())
+}
+
+func TestStatsWithFailure(t *testing.T) {
+	vrOptions := sl.VideoRecServiceOptions{
+		MaxBatchSize:    50,
+		DisableFallback: true,
+		DisableRetry:    true,
+	}
+	uClient :=
+		umc.MakeMockUserServiceClient(*usl.DefaultUserServiceOptions())
+	vClient :=
+		vmc.MakeMockVideoServiceClient(*vsl.DefaultVideoServiceOptions())
+	vrService := sl.MakeVideoRecServiceServerWithMocks(
+		vrOptions,
+		uClient,
+		vClient,
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	vClient.SetInjectionConfig(ctx, &fipb.SetInjectionConfigRequest{
+		Config: &fipb.InjectionConfig{
+			// fail every request
+			FailureRate: 1,
+		},
+	})
+
+	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var userId uint64 = 204054
+	for i := 0; i < 10; i++ {
+		_, err := vrService.GetTopVideos(
+			ctx,
+			&pb.GetTopVideosRequest{UserId: userId + uint64(i), Limit: 5},
+		)
+		assert.False(t, err == nil)
+	}
+
+	// Get stats
+	statsResponse, err := vrService.GetStats(ctx, &pb.GetStatsRequest{})
+	assert.True(t, err == nil)
+	assert.Equal(t, uint64(10), statsResponse.GetTotalRequests())
+	assert.Equal(t, uint64(10), statsResponse.GetTotalErrors())
+	assert.Equal(t, uint64(0), statsResponse.GetActiveRequests())
+	assert.Equal(t, uint64(0), statsResponse.GetUserServiceErrors())
+	assert.Equal(t, uint64(10), statsResponse.GetVideoServiceErrors())
+	assert.Equal(t, uint64(0), statsResponse.GetStaleResponses())
+}
+
+func TestStatsWithFallback(t *testing.T) {
+	vrOptions := sl.VideoRecServiceOptions{
+		MaxBatchSize:    50,
+		DisableFallback: false,
+		DisableRetry:    true,
+	}
+	uClient :=
+		umc.MakeMockUserServiceClient(*usl.DefaultUserServiceOptions())
+	vClient :=
+		vmc.MakeMockVideoServiceClient(*vsl.DefaultVideoServiceOptions())
+	vrService := sl.MakeVideoRecServiceServerWithMocks(
+		vrOptions,
+		uClient,
+		vClient,
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 10 without failure
+	var userId uint64 = 204054
+	for i := 0; i < 10; i++ {
+		_, err := vrService.GetTopVideos(
+			ctx,
+			&pb.GetTopVideosRequest{UserId: userId + uint64(i), Limit: 5},
+		)
+		assert.True(t, err == nil)
+	}
+
+	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	uClient.SetInjectionConfig(ctx, &fipb.SetInjectionConfigRequest{
+		Config: &fipb.InjectionConfig{
+			// fail every request
+			FailureRate: 1,
+		},
+	})
+
+	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 10 with failure + fallback
+	for i := 0; i < 10; i++ {
+		_, err := vrService.GetTopVideos(
+			ctx,
+			&pb.GetTopVideosRequest{UserId: userId + uint64(i), Limit: 5},
+		)
+		assert.True(t, err == nil)
+	}
+
+	// Get stats
+	statsResponse, err := vrService.GetStats(ctx, &pb.GetStatsRequest{})
+	assert.True(t, err == nil)
+	assert.Equal(t, uint64(20), statsResponse.GetTotalRequests())
+	assert.Equal(t, uint64(0), statsResponse.GetTotalErrors())
+	assert.Equal(t, uint64(0), statsResponse.GetActiveRequests())
+	assert.Equal(t, uint64(0), statsResponse.GetUserServiceErrors())
+	assert.Equal(t, uint64(0), statsResponse.GetVideoServiceErrors())
+	assert.Equal(t, uint64(10), statsResponse.GetStaleResponses())
+}

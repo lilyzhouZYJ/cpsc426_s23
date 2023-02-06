@@ -17,14 +17,14 @@ Date  Started  Spent Work completed
 02/05  9:25pm  1:00  C2
 02/05 11:15pm  0:15  C2 unit testing
 02/06  1:30pm  0:40  unit testing
-02/06  2:50pm  
+02/06  2:50pm  1:15  fix retry and fallback, refactor
+02/06  4:05pm  0:15  add unit tests for GetStats
                ----
-               9:25  TOTAL time spent
+               10:55  TOTAL time spent
 
 I discussed my solution with: Anna Zhang, Peter Yu
 
 Discussion (major conceptual and coding difficulties):
 
 TODO:
-- potentially refactor server_lib.go
 - discussion questions of Part A
