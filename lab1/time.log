@@ -19,12 +19,15 @@ Date  Started  Spent Work completed
 02/06  1:30pm  0:40  unit testing
 02/06  2:50pm  1:15  fix retry and fallback, refactor
 02/06  4:05pm  0:15  add unit tests for GetStats
+02/06  4:20pm  0:55  discussion questions
                ----
-               10:55  TOTAL time spent
+               11:50  TOTAL time spent
 
 I discussed my solution with: Anna Zhang, Peter Yu
 
 Discussion (major conceptual and coding difficulties):
 
 TODO:
-- discussion questions of Part A
+- remaining discussion questions
+- unit tests for: retrying
+- more unit tests?

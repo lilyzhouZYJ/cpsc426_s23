@@ -1,4 +1,5 @@
 # A1
+
 What networking/socket API(s) do you think Dial corresponds to or is similar to?
 
 Dial seems similar to the connect() in the socket API. connect() establishes a communication
@@ -6,13 +7,51 @@ link to a specific remote host (identified by its address) via a socket (identif
 descriptor). This is similar to Dial, which takes a server address and port number to establish
 a gRPC channel.
 
+
+
 # A2
+
 In what cases do you think Dial() will fail? What status code do you think you should return for these cases?
 
 Dial() may fail when the server is down, or when the port is occupied, or if the caller does not
 have valid credentials. In the first two scenarios, the status code would be Unavailable (14). In
 the third scenario, the status code would be Unauthenticated (7).
 
+
+
+# A3
+
+What networking/system calls do you think will be used under the hood when you call GetUser()?
+What cases do you think this call / these calls can return an error? You may find the slides from Lecture 3 helpful.
+Could GetUser return errors in cases where the network calls succeed?
+
+TODO
+
+Opening a socket
+Establishing TCP connection
+Negotiating TLS
+Starting HTTP/2 connection
+Making the gRPC call
+
+
+
+# ExtraCredit1
+
+How are these errors detected?
+
+TODO
+
+
+
+# A4
+
+What would happen if you used the same conn for both VideoService and UserService?
+
+TODO
+
+gRPC does allow channels to be shared. Sharing a channel would reduce the overhead for
+establishing new connections. On the other hand, if either VideoService and UserService
+is high-throughput, this could delay other services using the same channel.
 
 
 
@@ -28,6 +67,34 @@ Top recommended video:
 - Video id=1386, title="ugly Corn", author=Adolfo Runolfsdottir, url=https://video-data.localhost/blob/1386
 
 
+
+# A8
+
+Should you send the batched requests concurrently? Why or why not? What are the advantages or disadvantages?
+
+TODO
+
+
+
+# ExtraCredit2
+
+Assume that handling one batch request is cheap up to the batch size limit. 
+How could you reduce the total number of requests to UserService and VideoService using batching, 
+assuming you have many incoming requests to VideoRecService? 
+Describe how you would implement this at a high-level (bullet points and pseudocode are fine) but 
+you do not need to implement it in your service.
+
+We could temporarily withhold incoming requests (i.e. delay sending them) and only send them when
+they add up to the batch size limit. More specifically:
+
+- We keep a list of requests, called `batch`, to be sent as the next batch request.
+- For each incoming request, we append the request to `batch`.
+- If the size of `batch` reaches or exceeds the max batch limit, we slice `batch` to be the size
+  of the max batch limit and send the batch request. We store any remaining requests back into
+  `batch`.
+- To ensure that no request is withheld in `batch` for too long, we store an `expirationTime` for
+  each request. We will regularly check if any request in `batch` has reached its expirationTime,
+  and if so, we will send the request.
 
 
 
@@ -66,3 +133,51 @@ client, such as invalid authentication. We could retry a request when the failur
 a network error or server error, and when the server is not currently servicing a high number
 of requests.
 
+
+
+# C2
+
+What should you do if VideoService is still down and your responses are past expiration? 
+Return expired responses or an error? What are the tradeoffs?
+
+Returning expired response is a better option in terms of user experience, because the user
+would prefer to receive a response than an error. However, the response may be less useful
+and less relevant if it has expired, i.e. we may be returning out-of-date global trending 
+videos.
+
+
+
+# C3
+
+Name at least one additional strategy you could use to improve the reliability of VideoRecService
+(successful, and useful responses) in the event of failures of UserService or VideoService.
+What tradeoffs would you make and why?
+
+Another strategy we could use is caching the results for the most recent requests, i.e. we cache the
+recommended videos for the users of the most recent requests. This means that in the case of a server
+failure, we could fall back onto the cached recommended videos (if the user exists in the cache), 
+instead of returning some generic global trending videos. This strategy increases the usefulness and
+relevance of the returned responses, but requires the overhead of maintaining a cache (maintaining
+memory space, saving responses to cache, executing eviction, etc.).
+
+
+
+# C4
+
+In part A you likely created new connections via grpc.Dial() to UserService and VideoService on
+every request when you needed to use them. What might be costly about connection establishment?
+(hint: for a high-throughput service you would want to avoid repeated connection establishment.)
+How could you change your implementation to avoid per-request connection establishment? 
+Does it have any tradeoffs (consider topics such as load balancing from the course lectures)?
+
+A gRPC channel created via grpc.Dial() provides a connection to a gRPC server on a specified host 
+and port, i.e. each channel is a single TCP connection. This means that establishing each 
+connection takes all the steps involved in creating a TCP connection, which can be costly if we
+repeatedly create new connections. This is why for a high-throughput service, we would want to
+avoid repeated connection establishment. 
+
+I could change my implementation by having UserService and VideoService share a single channel.
+This would reduce the overhead for establishing new connections, but if either service is a
+high-throughput one, it could delay the other service using the same connection.
+
+TODO
