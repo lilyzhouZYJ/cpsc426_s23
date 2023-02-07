@@ -148,13 +148,16 @@ func UpdateTrendingVideos(server *VideoRecServiceServer){
 
 	// Infinite loop
 	for {
+		var err error
+
 		// Check if there is no videoClient
 		if videoClient == nil {
 			if server.useMock {
 				videoClient = server.mockVideoServiceClient
 			} else {
 				// Create gRPC channel for VideoService
-				connVideo, err := CreateConnection(server, server.options.VideoServiceAddr)
+				var connVideo *grpc.ClientConn
+				connVideo, err = CreateConnection(server, server.options.VideoServiceAddr)
 				if err == nil {
 					defer connVideo.Close()
 					videoClient = vpb.NewVideoServiceClient(connVideo)
@@ -165,14 +168,17 @@ func UpdateTrendingVideos(server *VideoRecServiceServer){
 		if videoClient != nil {
 			// If creating videoClient succeeded
 			server.trendingLock.Lock()
-			if uint64(time.Now().Unix()) >= server.expirationTime - 30 {
+			if uint64(time.Now().Unix()) >= server.expirationTime {
 				// Previous cache has expired; fetch update
-				UpdateTrendingVideosInternal(server, videoClient, batchSize)
+				err = UpdateTrendingVideosInternal(server, videoClient, batchSize)
 			}
 			server.trendingLock.Unlock()
 		}
 
-		time.Sleep(10 * time.Second)
+		if err != nil {
+			// If we encountered failure, back off and wait
+			time.Sleep(10 * time.Second)
+		}
 	}	
 }
 

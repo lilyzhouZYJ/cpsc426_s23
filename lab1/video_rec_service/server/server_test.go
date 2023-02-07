@@ -134,7 +134,7 @@ func TestBatchSize(t *testing.T){
 		ctx,
 		&pb.GetTopVideosRequest{UserId: userId, Limit: 5},
 	)
-	assert.True(t, err != nil)
+	assert.True(t, err != nil) // expect failure
 }
 
 func TestStatsNoFailure(t *testing.T) {
@@ -154,11 +154,21 @@ func TestStatsNoFailure(t *testing.T) {
 
 	var userId uint64 = 204054
 	for i := 0; i < 10; i++ {
-		_, err := vrService.GetTopVideos(
+		out, err := vrService.GetTopVideos(
 			ctx,
 			&pb.GetTopVideosRequest{UserId: userId + uint64(i), Limit: 5},
 		)
 		assert.True(t, err == nil)
+
+		if i == 0 {
+			videos := out.Videos
+			assert.Equal(t, 5, len(videos))
+			assert.EqualValues(t, 1012, videos[0].VideoId)
+			assert.Equal(t, "Harry Boehm", videos[1].Author)
+			assert.EqualValues(t, 1209, videos[2].VideoId)
+			assert.Equal(t, "https://video-data.localhost/blob/1309", videos[3].Url)
+			assert.Equal(t, "precious here", videos[4].Title)
+		}
 	}
 
 	// Get stats
