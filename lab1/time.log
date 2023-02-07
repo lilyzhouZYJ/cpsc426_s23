@@ -20,8 +20,11 @@ Date  Started  Spent Work completed
 02/06  2:50pm  1:15  fix retry and fallback, refactor
 02/06  4:05pm  0:15  add unit tests for GetStats
 02/06  4:20pm  0:55  discussion questions
+02/07 10:05am  0:15  refactor updateTrendingVideos
+02/07 11:15am  0:30  move updateTrendingVideos to constructor for 
+                     VRServiceServer
                ----
-               11:50  TOTAL time spent
+              12:35  TOTAL time spent
 
 I discussed my solution with: Anna Zhang, Peter Yu
 

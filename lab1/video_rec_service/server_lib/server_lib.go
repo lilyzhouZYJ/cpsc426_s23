@@ -55,18 +55,24 @@ type VideoRecServiceServer struct {
 
 	// Cache trending videos
 	trendingLock sync.RWMutex
-	trendingInitialized bool
 	trendingVideos []*vpb.VideoInfo
 	expirationTime uint64
 }
 
 func MakeVideoRecServiceServer(options VideoRecServiceOptions) (*VideoRecServiceServer, error) {
-	return &VideoRecServiceServer{
+	server := &VideoRecServiceServer{
 		options: options,
 		useMock: false,
 		trendingVideos: make([]*vpb.VideoInfo, 0),
 		expirationTime: uint64(time.Now().Unix()),
-	}, nil
+	}
+
+	// Update trending videos in a goroutine
+	if !server.options.DisableFallback {
+		go UpdateTrendingVideos(server)
+	}
+
+	return server, nil
 }
 
 func MakeVideoRecServiceServerWithMocks(
@@ -75,7 +81,7 @@ func MakeVideoRecServiceServerWithMocks(
 	mockVideoServiceClient *vmc.MockVideoServiceClient,
 ) *VideoRecServiceServer {
 
-	return &VideoRecServiceServer{
+	server := &VideoRecServiceServer{
 		options: options,
 
 		useMock: true,
@@ -85,91 +91,45 @@ func MakeVideoRecServiceServerWithMocks(
 		trendingVideos: make([]*vpb.VideoInfo, 0),
 		expirationTime: uint64(time.Now().Unix()),
 	}
-}
 
-func UpdateTrendingVideosInternal(
-	ctx context.Context,
-	server *VideoRecServiceServer,
-	batchSize int,
-) error {
-
-	// (1) Create VideoService client
-	var videoClient vpb.VideoServiceClient
-	if server.useMock {
-		videoClient = server.mockVideoServiceClient
-	} else {
-		// Create gRPC channel for VideoService
-		connVideo, err := CreateConnection(server, server.options.VideoServiceAddr)
-		if err != nil {
-			return handleError(err, "fail to dial to update trending videos")
-		}
-		defer connVideo.Close()
-
-		// Create VideoService client stub
-		videoClient = vpb.NewVideoServiceClient(connVideo)
+	// Update trending videos in a goroutine
+	if !server.options.DisableFallback {
+		go UpdateTrendingVideos(server)
 	}
 
-	// (2) Fetch trending videos
+	return server
+}
+
+// Internal helper for UpdateTrendingVideos();
+// the thread should already hold the trendingLock
+func UpdateTrendingVideosInternal(
+	server *VideoRecServiceServer,
+	videoClient vpb.VideoServiceClient,
+	batchSize int,
+) error {
+	// Create context
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// (1) Fetch trending videos
 	trendingVideosResponse, err := videoClient.GetTrendingVideos(ctx, &vpb.GetTrendingVideosRequest{})
 	if err != nil {
 		// Retry
 		trendingVideosResponse, err = videoClient.GetTrendingVideos(ctx, &vpb.GetTrendingVideosRequest{})
 		if err != nil {
-			return handleError(err, "fail to fetch trending videos")
+			return handleError(err, "fail to fetch video ids for trending videos")
 		}
 	}
 	videoIds := trendingVideosResponse.GetVideos()
 	expirationTime := trendingVideosResponse.GetExpirationTimeS()
 
-	// (3) Fetch video infos for videoIds
-	videoInfos := make([]*vpb.VideoInfo, 0)
-
-	// Batching:
-	if batchSize > 0 {
-		// Batching
-		for len(videoIds) > 0 {
-			// Slice for next request
-			vids := make([]uint64, 0)
-
-			if len(videoIds) > batchSize {
-				vids = videoIds[:batchSize]
-				videoIds = videoIds[batchSize:]
-			} else {
-				vids = videoIds
-				videoIds = make([]uint64, 0)
-			}
-
-			videoResponse, err := videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: vids})
-			if err != nil {
-				// Retry
-				videoResponse, err = videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: vids})
-				if err != nil {
-					return handleError(err, "fail to fetch video infos")
-				}
-			}
-	
-			videoInfos = append(videoInfos, videoResponse.GetVideos()...)
-		}
-	} else {
-		// No batching
-		for _, v := range videoIds {
-			videoResponse, err := videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: []uint64{v}})
-			if err != nil {
-				// Retry
-				videoResponse, err = videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: []uint64{v}})
-				if err != nil {
-					return handleError(err, "fail to fetch video infos")
-				}
-			}
-	
-			videoInfos = append(videoInfos, videoResponse.GetVideos()...)
-		}
+	// (2) Fetch video infos for videoIds
+	videoInfos, err := FetchVideoInfos(ctx, server, videoClient, videoIds)
+	if err != nil {
+		return handleError(err, "fail to fetch video infos for trending videos")
 	}
 
-	// (4) Update server cache
-	server.trendingLock.Lock()
-	defer server.trendingLock.Unlock()
-
+	// (3) Update server cache
 	if expirationTime > server.expirationTime {
 		// Only update if the fetched videos have a later expiration time
 		server.trendingVideos = videoInfos
@@ -179,18 +139,39 @@ func UpdateTrendingVideosInternal(
 	return nil
 }
 
-func UpdateTrendingVideos(
-	ctx context.Context,
-	server *VideoRecServiceServer,
-){
+func UpdateTrendingVideos(server *VideoRecServiceServer){
 	// Max batch size
 	batchSize := server.options.MaxBatchSize
 
+	// VideoService client
+	var videoClient vpb.VideoServiceClient = nil
+
+	// Infinite loop
 	for {
-		if uint64(time.Now().Unix()) >= server.expirationTime - 30 {
-			// Previous cache has expired; fetch update
-			UpdateTrendingVideosInternal(ctx, server, batchSize)
+		// Check if there is no videoClient
+		if videoClient == nil {
+			if server.useMock {
+				videoClient = server.mockVideoServiceClient
+			} else {
+				// Create gRPC channel for VideoService
+				connVideo, err := CreateConnection(server, server.options.VideoServiceAddr)
+				if err == nil {
+					defer connVideo.Close()
+					videoClient = vpb.NewVideoServiceClient(connVideo)
+				}
+			}
 		}
+
+		if videoClient != nil {
+			// If creating videoClient succeeded
+			server.trendingLock.Lock()
+			if uint64(time.Now().Unix()) >= server.expirationTime - 30 {
+				// Previous cache has expired; fetch update
+				UpdateTrendingVideosInternal(server, videoClient, batchSize)
+			}
+			server.trendingLock.Unlock()
+		}
+
 		time.Sleep(10 * time.Second)
 	}	
 }
@@ -199,7 +180,7 @@ func GetCachedTrendingVideos(server *VideoRecServiceServer) ([]*vpb.VideoInfo, b
 	server.trendingLock.RLock()
 	defer server.trendingLock.RUnlock()
 
-	if !server.trendingInitialized {
+	if server.trendingVideos == nil {
 		return nil, false
 	}
 	
@@ -362,14 +343,6 @@ func (server *VideoRecServiceServer) GetTopVideos(
 	// Update stats
 	startTime := time.Now()
 	atomic.AddUint64(&server.numActiveRequests, 1)
-
-	// Fetch trending videos and update cache
-	server.trendingLock.Lock()
-	if !server.trendingInitialized && !server.options.DisableFallback {
-		go UpdateTrendingVideos(ctx, server)
-		server.trendingInitialized = true
-	}
-	server.trendingLock.Unlock()
 
 	// I. Fetch the user and users they subscribe to
 
