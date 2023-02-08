@@ -15,6 +15,7 @@ import (
 	vmc "cs426.yale.edu/lab1/video_service/mock_client"
 	upb "cs426.yale.edu/lab1/user_service/proto"
 	vpb "cs426.yale.edu/lab1/video_service/proto"
+	vsl "cs426.yale.edu/lab1/video_service/server_lib"
 	"cs426.yale.edu/lab1/ranker"
 	// "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -63,7 +64,7 @@ func MakeVideoRecServiceServer(options VideoRecServiceOptions) (*VideoRecService
 	server := &VideoRecServiceServer{
 		options: options,
 		useMock: false,
-		trendingVideos: make([]*vpb.VideoInfo, 0),
+		trendingVideos: nil,
 		expirationTime: uint64(time.Now().Unix()),
 	}
 
@@ -88,7 +89,7 @@ func MakeVideoRecServiceServerWithMocks(
 		mockUserServiceClient: mockUserServiceClient,
 		mockVideoServiceClient: mockVideoServiceClient,
 
-		trendingVideos: make([]*vpb.VideoInfo, 0),
+		trendingVideos: nil,
 		expirationTime: uint64(time.Now().Unix()),
 	}
 
@@ -153,7 +154,7 @@ func UpdateTrendingVideos(server *VideoRecServiceServer){
 		// Check if there is no videoClient
 		if videoClient == nil {
 			if server.useMock {
-				videoClient = server.mockVideoServiceClient
+				videoClient = vmc.MakeMockVideoServiceClient(*vsl.DefaultVideoServiceOptions())
 			} else {
 				// Create gRPC channel for VideoService
 				var connVideo *grpc.ClientConn

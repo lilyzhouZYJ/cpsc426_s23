@@ -89,7 +89,19 @@ func TestFallback(t *testing.T){
 		vClient,
 	)
 
+	// 10 without failure so that updateTrendingVideos has time to initialize
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	var userId uint64 = 204054
+	for i := 0; i < 10; i++ {
+		_, err := vrService.GetTopVideos(
+			ctx,
+			&pb.GetTopVideosRequest{UserId: userId + uint64(i), Limit: 5},
+		)
+		assert.True(t, err == nil)
+	}
+
+	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	vClient.SetInjectionConfig(ctx, &fipb.SetInjectionConfigRequest{
 		Config: &fipb.InjectionConfig{
@@ -98,7 +110,7 @@ func TestFallback(t *testing.T){
 		},
 	})
 
-	var userId uint64 = 204054
+	// var userId uint64 = 204054
 	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_, err := vrService.GetTopVideos(
@@ -246,10 +258,9 @@ func TestStatsWithFallback(t *testing.T) {
 		vClient,
 	)
 
+	// 10 without failure
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-
-	// 10 without failure
 	var userId uint64 = 204054
 	for i := 0; i < 10; i++ {
 		_, err := vrService.GetTopVideos(
