@@ -26,9 +26,10 @@ Date  Started  Spent Work completed
 02/07  9:45pm  0:20  unit testing
 02/08  1:45pm  0:40  add unit tests; add req limit truncation to
                      trending videos
-02/08  3:25pm
+02/08  3:25pm  0:30  unit testing, debugging
+02/08  8:30pm  2:00  unit testing, debugging
                ----
-              13:50  TOTAL time spent
+              16:20  TOTAL time spent
 
 I discussed my solution with: Anna Zhang, Peter Yu
 
@@ -36,4 +37,3 @@ Discussion (major conceptual and coding difficulties):
 
 TODO:
 - remaining discussion questions
-- more unit tests? unit test on FetchVideoInfos
