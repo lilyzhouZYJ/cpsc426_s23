@@ -70,7 +70,7 @@ func MakeVideoRecServiceServer(options VideoRecServiceOptions) (*VideoRecService
 
 	// Update trending videos in a goroutine
 	if !server.options.DisableFallback {
-		log.Println("start goroutine in MakeVideoRecServiceServer")
+		// log.Println("start goroutine in MakeVideoRecServiceServer")
 		go UpdateTrendingVideos(server)
 	}
 
@@ -96,7 +96,7 @@ func MakeVideoRecServiceServerWithMocks(
 
 	// Update trending videos in a goroutine
 	if !server.options.DisableFallback {
-		log.Println("start goroutine in MakeVideoRecServiceServerWithMocks")
+		// log.Println("start goroutine in MakeVideoRecServiceServerWithMocks")
 		go UpdateTrendingVideos(server)
 	}
 
@@ -157,7 +157,7 @@ func UpdateTrendingVideos(server *VideoRecServiceServer){
 		// Check if there is no videoClient
 		if videoClient == nil {
 			if server.useMock {
-				log.Println("update trending videos with mock")
+				// log.Println("update trending videos with mock")
 				videoClient = vmc.MakeMockVideoServiceClient(*vsl.DefaultVideoServiceOptions())
 				// vOptions := vsl.VideoServiceOptions{MaxBatchSize: 50}
 				// videoClient = vmc.MakeMockVideoServiceClient(vOptions)
@@ -175,7 +175,7 @@ func UpdateTrendingVideos(server *VideoRecServiceServer){
 		if videoClient != nil {
 			// If creating videoClient succeeded
 			server.trendingLock.Lock()
-			if uint64(time.Now().Unix()) >= server.expirationTime {
+			if uint64(time.Now().Unix()) >= server.expirationTime - 20 {
 				// Previous cache has expired; fetch update
 				err = UpdateTrendingVideosInternal(server, videoClient, batchSize)
 			}
@@ -283,31 +283,51 @@ func FetchUserInfos(
 	maxBatchSize := server.options.MaxBatchSize
 	userInfos := make([]*upb.UserInfo, 0)
 
-	for len(userIds) > 0 {
-		// Slice to fix into batch size
-		batch := make([]uint64, 0)
-
-		if len(userIds) > maxBatchSize {
-			batch = userIds[:maxBatchSize]
-			userIds = userIds[maxBatchSize:]
-		} else {
-			batch = userIds
-			userIds = make([]uint64, 0)
-		}
-
-		userResponse, err := userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: batch})
-		if err != nil {
-			// Retry
-			if !server.options.DisableRetry {
-				userResponse, err = userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: batch})
-			}
-
+	if maxBatchSize == 0 {
+		// No batch
+		for i := 0; i < len(userIds); i++ {
+			userResponse, err := userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: []uint64{userIds[i]}})
 			if err != nil {
-				return nil, err
-			}
-		}
+				// Retry
+				if !server.options.DisableRetry {
+					userResponse, err = userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: []uint64{userIds[i]}})
+				}
 
-		userInfos = append(userInfos, userResponse.GetUsers()...)
+				if err != nil {
+					return nil, err
+				}
+			}
+
+			userInfos = append(userInfos, userResponse.GetUsers()...)
+		}
+	} else {
+		// Batch
+		for len(userIds) > 0 {
+			// Slice to fix into batch size
+			batch := make([]uint64, 0)
+	
+			if len(userIds) > maxBatchSize {
+				batch = userIds[:maxBatchSize]
+				userIds = userIds[maxBatchSize:]
+			} else {
+				batch = userIds
+				userIds = make([]uint64, 0)
+			}
+	
+			userResponse, err := userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: batch})
+			if err != nil {
+				// Retry
+				if !server.options.DisableRetry {
+					userResponse, err = userClient.GetUser(ctx, &upb.GetUserRequest{UserIds: batch})
+				}
+	
+				if err != nil {
+					return nil, err
+				}
+			}
+	
+			userInfos = append(userInfos, userResponse.GetUsers()...)
+		}
 	}
 
 	return userInfos, nil
@@ -326,32 +346,51 @@ func FetchVideoInfos(
 
 	// log.Println("FetchVideoInfos with videoIds:", videoIds)
 
-	for len(videoIds) > 0 {
-		// Slice to fix into batch size
-		batch := make([]uint64, 0)
-
-		if len(videoIds) > maxBatchSize {
-			batch = videoIds[:maxBatchSize]
-			videoIds = videoIds[maxBatchSize:]
-		} else {
-			batch = videoIds
-			videoIds = make([]uint64, 0)
-		}
-
-		videoResponse, err := videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: batch})
-		if err != nil {
-			// Retry
-			if !server.options.DisableRetry {
-				videoResponse, err = videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: batch})
-			}
-
+	if maxBatchSize == 0 {
+		// No batch
+		for i := 0; i < len(videoIds); i++ {
+			videoResponse, err := videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: []uint64{videoIds[i]}})
 			if err != nil {
-				log.Println("error")
-				return nil, err
-			}
-		}
+				// Retry
+				if !server.options.DisableRetry {
+					videoResponse, err = videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: []uint64{videoIds[i]}})
+				}
 
-		videoInfos = append(videoInfos, videoResponse.GetVideos()...)
+				if err != nil {
+					return nil, err
+				}
+			}
+
+			videoInfos = append(videoInfos, videoResponse.GetVideos()...)
+		}
+	} else {
+		for len(videoIds) > 0 {
+			// Slice to fix into batch size
+			batch := make([]uint64, 0)
+	
+			if len(videoIds) > maxBatchSize {
+				batch = videoIds[:maxBatchSize]
+				videoIds = videoIds[maxBatchSize:]
+			} else {
+				batch = videoIds
+				videoIds = make([]uint64, 0)
+			}
+	
+			videoResponse, err := videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: batch})
+			if err != nil {
+				// Retry
+				if !server.options.DisableRetry {
+					videoResponse, err = videoClient.GetVideo(ctx, &vpb.GetVideoRequest{VideoIds: batch})
+				}
+	
+				if err != nil {
+					// log.Println("error")
+					return nil, err
+				}
+			}
+	
+			videoInfos = append(videoInfos, videoResponse.GetVideos()...)
+		}
 	}
 
 	return videoInfos, nil
