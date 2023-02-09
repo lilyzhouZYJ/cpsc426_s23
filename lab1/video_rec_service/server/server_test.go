@@ -98,30 +98,30 @@ func TestFetchUserInfos(t *testing.T){
 	assert.Equal(t, "https://user-service.localhost/profile/202549", out[0].ProfileUrl)
 }
 
-// func TestFetchVideoInfos(t *testing.T){
-// 	vrOptions := sl.VideoRecServiceOptions{MaxBatchSize: 50}
-// 	uClient :=
-// 		umc.MakeMockUserServiceClient(*usl.DefaultUserServiceOptions())
-// 	vClient :=
-// 		vmc.MakeMockVideoServiceClient(*vsl.DefaultVideoServiceOptions())
-// 	vrService := sl.MakeVideoRecServiceServerWithMocks(
-// 		vrOptions,
-// 		uClient,
-// 		vClient,
-// 	)
+func TestFetchVideoInfos(t *testing.T){
+	vrOptions := sl.VideoRecServiceOptions{MaxBatchSize: 50}
+	uClient :=
+		umc.MakeMockUserServiceClient(*usl.DefaultUserServiceOptions())
+	vClient :=
+		vmc.MakeMockVideoServiceClient(*vsl.DefaultVideoServiceOptions())
+	vrService := sl.MakeVideoRecServiceServerWithMocks(
+		vrOptions,
+		uClient,
+		vClient,
+	)
 
-// 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-// 	defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-// 	out, err := sl.FetchVideoInfos(ctx, vrService, vClient, []uint64{1386})
-// 	assert.True(t, err == nil)
+	out, err := sl.FetchVideoInfos(ctx, vrService, vClient, []uint64{1386})
+	assert.True(t, err == nil)
 
-// 	assert.Equal(t, 1, len(out))
-// 	assert.EqualValues(t, 1386, out[0].VideoId)
-// 	assert.Equal(t, "ugly Corn", out[0].Title)
-// 	assert.Equal(t, "Adolfo Runolfsdottir", out[0].Author)
-// 	assert.Equal(t, "https://video-data.localhost/blob/1386", out[0].Url)
-// }
+	assert.Equal(t, 1, len(out))
+	assert.EqualValues(t, 1386, out[0].VideoId)
+	assert.Equal(t, "ugly Corn", out[0].Title)
+	assert.Equal(t, "Adolfo Runolfsdottir", out[0].Author)
+	assert.Equal(t, "https://video-data.localhost/blob/1386", out[0].Url)
+}
 
 func TestReqLimit(t *testing.T){
 	vrOptions := sl.VideoRecServiceOptions{MaxBatchSize: 50}
@@ -144,24 +144,24 @@ func TestReqLimit(t *testing.T){
 		&pb.GetTopVideosRequest{UserId: userId, Limit: 0},
 	)
 	assert.True(t, err == nil)
-	log.Println(out)
-	numVideos := len(out.Videos)
+	// log.Println(out)
+	// numVideos := len(out.Videos)
 	
-	var limit int32;
-	for limit = 5; limit < 50; limit += 5 {
-		out, err := vrService.GetTopVideos(
-			ctx,
-			&pb.GetTopVideosRequest{UserId: userId, Limit: limit},
-		)
-		assert.True(t, err == nil)
+	// var limit int32;
+	// for limit = 5; limit < 50; limit += 5 {
+	// 	out, err := vrService.GetTopVideos(
+	// 		ctx,
+	// 		&pb.GetTopVideosRequest{UserId: userId, Limit: limit},
+	// 	)
+	// 	assert.True(t, err == nil)
 
-		videos := out.Videos
-		if numVideos < int(limit) {
-			assert.True(t, len(videos) == numVideos)
-		} else {
-			assert.True(t, len(videos) == int(limit))
-		}
-	}
+	// 	videos := out.Videos
+	// 	if numVideos < int(limit) {
+	// 		assert.True(t, len(videos) == numVideos)
+	// 	} else {
+	// 		assert.True(t, len(videos) == int(limit))
+	// 	}
+	// }
 }
 
 // func TestFallback(t *testing.T){

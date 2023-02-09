@@ -158,9 +158,9 @@ func UpdateTrendingVideos(server *VideoRecServiceServer){
 		if videoClient == nil {
 			if server.useMock {
 				log.Println("update trending videos with mock")
-				// videoClient = vmc.MakeMockVideoServiceClient(*vsl.DefaultVideoServiceOptions())
-				vOptions := vsl.VideoServiceOptions{MaxBatchSize: 50}
-				videoClient = vmc.MakeMockVideoServiceClient(vOptions)
+				videoClient = vmc.MakeMockVideoServiceClient(*vsl.DefaultVideoServiceOptions())
+				// vOptions := vsl.VideoServiceOptions{MaxBatchSize: 50}
+				// videoClient = vmc.MakeMockVideoServiceClient(vOptions)
 			} else {
 				// Create gRPC channel for VideoService
 				var connVideo *grpc.ClientConn
@@ -489,6 +489,7 @@ func (server *VideoRecServiceServer) GetTopVideos(
 	}
 	
 	// (2) Fetch video infos for liked videos
+	// log.Println(likedVideos)
 	videoInfos, err := FetchVideoInfos(ctx, server, videoClient, likedVideos)
 	if err != nil {
 		// Fallback
