@@ -70,6 +70,7 @@ func MakeVideoRecServiceServer(options VideoRecServiceOptions) (*VideoRecService
 
 	// Update trending videos in a goroutine
 	if !server.options.DisableFallback {
+		log.Println("start goroutine in MakeVideoRecServiceServer")
 		go UpdateTrendingVideos(server)
 	}
 
@@ -95,6 +96,7 @@ func MakeVideoRecServiceServerWithMocks(
 
 	// Update trending videos in a goroutine
 	if !server.options.DisableFallback {
+		log.Println("start goroutine in MakeVideoRecServiceServerWithMocks")
 		go UpdateTrendingVideos(server)
 	}
 
@@ -125,6 +127,7 @@ func UpdateTrendingVideosInternal(
 	expirationTime := trendingVideosResponse.GetExpirationTimeS()
 
 	// (2) Fetch video infos for videoIds
+	// log.Println("fetching video infos for trending videos")
 	videoInfos, err := FetchVideoInfos(ctx, server, videoClient, videoIds)
 	if err != nil {
 		return handleError(err, "fail to fetch video infos for trending videos")
@@ -154,7 +157,10 @@ func UpdateTrendingVideos(server *VideoRecServiceServer){
 		// Check if there is no videoClient
 		if videoClient == nil {
 			if server.useMock {
-				videoClient = vmc.MakeMockVideoServiceClient(*vsl.DefaultVideoServiceOptions())
+				log.Println("update trending videos with mock")
+				// videoClient = vmc.MakeMockVideoServiceClient(*vsl.DefaultVideoServiceOptions())
+				vOptions := vsl.VideoServiceOptions{MaxBatchSize: 50}
+				videoClient = vmc.MakeMockVideoServiceClient(vOptions)
 			} else {
 				// Create gRPC channel for VideoService
 				var connVideo *grpc.ClientConn
@@ -183,22 +189,28 @@ func UpdateTrendingVideos(server *VideoRecServiceServer){
 	}	
 }
 
-func GetCachedTrendingVideos(server *VideoRecServiceServer) ([]*vpb.VideoInfo, bool) {
+func GetCachedTrendingVideos(server *VideoRecServiceServer, limit int32) ([]*vpb.VideoInfo, bool) {
 	server.trendingLock.RLock()
 	defer server.trendingLock.RUnlock()
 
 	if server.trendingVideos == nil {
 		return nil, false
 	}
+
+	// Truncate to limit
+	videos := server.trendingVideos
+	if limit > 0 && limit <= int32(len(videos)) {
+		videos = videos[:limit]
+	}
 	
 	if time.Now().Unix() < int64(server.expirationTime) {
 		// Cached videos has not expired
 		log.Printf("VideoRecService: getting cached trending videos (expired)")
-		return server.trendingVideos, false
+		return videos, false
 	} else {
 		// Cached videos has expired
 		log.Printf("VideoRecService: getting cached trending videos (unexpired)")
-		return server.trendingVideos, true
+		return videos, true
 	}
 }
 
@@ -312,6 +324,8 @@ func FetchVideoInfos(
 	maxBatchSize := server.options.MaxBatchSize
 	videoInfos := make([]*vpb.VideoInfo, 0)
 
+	// log.Println("FetchVideoInfos with videoIds:", videoIds)
+
 	for len(videoIds) > 0 {
 		// Slice to fix into batch size
 		batch := make([]uint64, 0)
@@ -332,6 +346,7 @@ func FetchVideoInfos(
 			}
 
 			if err != nil {
+				log.Println("error")
 				return nil, err
 			}
 		}
@@ -364,7 +379,7 @@ func (server *VideoRecServiceServer) GetTopVideos(
 		if err != nil {
 			// Fallback
 			if !server.options.DisableFallback {
-				cachedVideos, _ := GetCachedTrendingVideos(server)
+				cachedVideos, _ := GetCachedTrendingVideos(server, req.GetLimit())
 				if cachedVideos != nil {
 					defer updateStats(server, startTime, false, false, false, true)
 					return &pb.GetTopVideosResponse{Videos: cachedVideos, StaleResponse: true}, nil
@@ -386,7 +401,7 @@ func (server *VideoRecServiceServer) GetTopVideos(
 	if err != nil {
 		// Fallback
 		if !server.options.DisableFallback {
-			cachedVideos, _ := GetCachedTrendingVideos(server)
+			cachedVideos, _ := GetCachedTrendingVideos(server, req.GetLimit())
 			if cachedVideos != nil {
 				defer updateStats(server, startTime, false, false, false, true)
 				return &pb.GetTopVideosResponse{Videos: cachedVideos, StaleResponse: true}, nil
@@ -401,7 +416,7 @@ func (server *VideoRecServiceServer) GetTopVideos(
 		// This should never happen
 		if !server.options.DisableFallback {
 			// Use fallback
-			cachedVideos, _ := GetCachedTrendingVideos(server)
+			cachedVideos, _ := GetCachedTrendingVideos(server, req.GetLimit())
 			if cachedVideos != nil {
 				defer updateStats(server, startTime, false, false, false, true)
 				return &pb.GetTopVideosResponse{Videos: cachedVideos, StaleResponse: true}, nil
@@ -420,7 +435,7 @@ func (server *VideoRecServiceServer) GetTopVideos(
 	if err != nil {
 		// Fallback
 		if !server.options.DisableFallback {
-			cachedVideos, _ := GetCachedTrendingVideos(server)
+			cachedVideos, _ := GetCachedTrendingVideos(server, req.GetLimit())
 			if cachedVideos != nil {
 				defer updateStats(server, startTime, false, false, false, true)
 				return &pb.GetTopVideosResponse{Videos: cachedVideos, StaleResponse: true}, nil
@@ -457,7 +472,7 @@ func (server *VideoRecServiceServer) GetTopVideos(
 		if err != nil {
 			// Fallback
 			if !server.options.DisableFallback {
-				cachedVideos, _ := GetCachedTrendingVideos(server)
+				cachedVideos, _ := GetCachedTrendingVideos(server, req.GetLimit())
 				if cachedVideos != nil {
 					defer updateStats(server, startTime, false, false, false, true)
 					return &pb.GetTopVideosResponse{Videos: cachedVideos, StaleResponse: true}, nil
@@ -478,7 +493,7 @@ func (server *VideoRecServiceServer) GetTopVideos(
 	if err != nil {
 		// Fallback
 		if !server.options.DisableFallback {
-			cachedVideos, _ := GetCachedTrendingVideos(server)
+			cachedVideos, _ := GetCachedTrendingVideos(server, req.GetLimit())
 			if cachedVideos != nil {
 				defer updateStats(server, startTime, false, false, false, true)
 				return &pb.GetTopVideosResponse{Videos: cachedVideos, StaleResponse: true}, nil

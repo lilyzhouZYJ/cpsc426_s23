@@ -24,8 +24,11 @@ Date  Started  Spent Work completed
 02/07 11:15am  0:45  move updateTrendingVideos to constructor for 
                      VRServiceServer; modify updateTrendingVideos
 02/07  9:45pm  0:20  unit testing
+02/08  1:45pm  0:40  add unit tests; add req limit truncation to
+                     trending videos
+02/08  3:25pm
                ----
-              13:10  TOTAL time spent
+              13:50  TOTAL time spent
 
 I discussed my solution with: Anna Zhang, Peter Yu
 
@@ -33,5 +36,4 @@ Discussion (major conceptual and coding difficulties):
 
 TODO:
 - remaining discussion questions
-- unit tests for: retrying
-- more unit tests?
+- more unit tests? unit test on FetchVideoInfos
