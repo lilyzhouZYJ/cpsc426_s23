@@ -28,12 +28,21 @@ Date  Started  Spent Work completed
                      trending videos
 02/08  3:25pm  0:30  unit testing, debugging
 02/08  8:30pm  2:00  unit testing, debugging
+02/08 10:30pm  1:00  clean up, finish discussion
                ----
-              16:20  TOTAL time spent
+              18:20  TOTAL time spent
 
 I discussed my solution with: Anna Zhang, Peter Yu
 
 Discussion (major conceptual and coding difficulties):
 
-TODO:
-- remaining discussion questions
+One major conceptual difficulty is just to understand how the system works, in
+particular, how the different components of the system come together and work
+with each other. The diagrams provided in the lab were helpful, but it still
+took me some time to internalize what we are trying to accomplish.
+
+Another difficulty is just how many moving parts this lab involved. There is
+batching, truncating results based on request limit, retry, fallback. Overall
+there is just a lot of stuff to keep track of, and to test as well. This was
+difficult because I found myself fixing one thing and then realizing another
+thing broke in the process.

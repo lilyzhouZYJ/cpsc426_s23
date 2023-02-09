@@ -5,7 +5,7 @@ import (
 	"sort"
 	"log"
 	"google.golang.org/grpc"
-	"fmt"
+	// "fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -17,7 +17,7 @@ import (
 	vpb "cs426.yale.edu/lab1/video_service/proto"
 	vsl "cs426.yale.edu/lab1/video_service/server_lib"
 	"cs426.yale.edu/lab1/ranker"
-	// "google.golang.org/grpc/codes"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -120,7 +120,7 @@ func UpdateTrendingVideosInternal(
 		// Retry
 		trendingVideosResponse, err = videoClient.GetTrendingVideos(ctx, &vpb.GetTrendingVideosRequest{})
 		if err != nil {
-			return handleError(err, "fail to fetch video ids for trending videos")
+			return handleError(codes.Internal, "fail to fetch video ids for trending videos")
 		}
 	}
 	videoIds := trendingVideosResponse.GetVideos()
@@ -130,7 +130,7 @@ func UpdateTrendingVideosInternal(
 	// log.Println("fetching video infos for trending videos")
 	videoInfos, err := FetchVideoInfos(ctx, server, videoClient, videoIds)
 	if err != nil {
-		return handleError(err, "fail to fetch video infos for trending videos")
+		return handleError(codes.Internal, "fail to fetch video infos for trending videos")
 	}
 
 	// (3) Update server cache
@@ -214,9 +214,9 @@ func GetCachedTrendingVideos(server *VideoRecServiceServer, limit int32) ([]*vpb
 	}
 }
 
-func handleError(err error, message string) error {
-	log.Printf("VideoRecService: %s, error %v\n", message, err)
-	return status.Errorf(status.Code(err), "VideoRecService: %s, error %v\n", message, err)
+func handleError(code codes.Code, message string) error {
+	log.Printf("VideoRecService: %s, error code %d\n", message, code)
+	return status.Errorf(code, "VideoRecService: %s, error code %d\n", message, code)
 }
 
 func updateStats(
@@ -426,7 +426,7 @@ func (server *VideoRecServiceServer) GetTopVideos(
 			}
 
 			defer updateStats(server, startTime, true, true, false, false)
-			return nil, handleError(err, "fail to dial to UserService")
+			return nil, handleError(codes.Unavailable, "fail to dial to UserService")
 		}
 		defer connUser.Close()
 
@@ -448,21 +448,7 @@ func (server *VideoRecServiceServer) GetTopVideos(
 		}
 
 		defer updateStats(server, startTime, true, true, false, false)
-		return nil, handleError(err, "fail to fetch user info on orig user")
-	}
-
-	if len(origUserInfos) != 1 {
-		// This should never happen
-		if !server.options.DisableFallback {
-			// Use fallback
-			cachedVideos, _ := GetCachedTrendingVideos(server, req.GetLimit())
-			if cachedVideos != nil {
-				defer updateStats(server, startTime, false, false, false, true)
-				return &pb.GetTopVideosResponse{Videos: cachedVideos, StaleResponse: true}, nil
-			}
-		}
-		defer updateStats(server, startTime, true, false, false, false)
-		return nil, handleError(nil, fmt.Sprintf("incorrect number (%d) of UserInfos for orig user", len(origUserInfos)))
+		return nil, handleError(codes.Internal, "fail to fetch user info on orig user")
 	}
 	origUserInfo := origUserInfos[0]
 
@@ -482,7 +468,7 @@ func (server *VideoRecServiceServer) GetTopVideos(
 		}
 
 		defer updateStats(server, startTime, true, true, false, false)
-		return nil, handleError(err, "fail to fetch liked videos of the subscribe users")		
+		return nil, handleError(codes.Internal, "fail to fetch liked videos of the subscribe users")		
 	}
 
 	// (5) Fetch the liked videos of subscribe-to users
@@ -519,7 +505,7 @@ func (server *VideoRecServiceServer) GetTopVideos(
 			}
 
 			defer updateStats(server, startTime, true, false, true, false)
-			return nil, handleError(err, "fail to dial to VideoService")
+			return nil, handleError(codes.Unavailable, "fail to dial to VideoService")
 		}
 		defer connVideo.Close()
 
@@ -541,7 +527,7 @@ func (server *VideoRecServiceServer) GetTopVideos(
 		}
 
 		defer updateStats(server, startTime, true, false, true, false)
-		return nil, handleError(err, "fail to fetch video infos of liked videos")
+		return nil, handleError(codes.Internal, "fail to fetch video infos of liked videos")
 	}
 
 	// III. Rank videos

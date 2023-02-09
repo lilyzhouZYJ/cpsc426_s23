@@ -25,13 +25,12 @@ What networking/system calls do you think will be used under the hood when you c
 What cases do you think this call / these calls can return an error? You may find the slides from Lecture 3 helpful.
 Could GetUser return errors in cases where the network calls succeed?
 
-TODO
-
-Opening a socket
-Establishing TCP connection
-Negotiating TLS
-Starting HTTP/2 connection
-Making the gRPC call
+Networking/system calls include establishing the TCP connection and the HTTP/2 connection. There
+are also read and write calls at the database level, allowing the client to read from and write to
+the database of the server. There are many cases where these calls could return error. For example,
+if the permission to write to socket is denied, if reads and writes are invalid, if the connection
+times out, etc. GetUser() could return error even if the network calls are successful; it could 
+return errors that are not associated with networking, such as invalid user ID.
 
 
 
@@ -39,7 +38,8 @@ Making the gRPC call
 
 How are these errors detected?
 
-TODO
+The errors could be detected using checksums on the packet data, which would be checked to determine
+the validity of the packets. Errors could also be detected when connections time out.
 
 
 
@@ -47,11 +47,11 @@ TODO
 
 What would happen if you used the same conn for both VideoService and UserService?
 
-TODO
-
 gRPC does allow channels to be shared. Sharing a channel would reduce the overhead for
 establishing new connections. On the other hand, if either VideoService and UserService
-is high-throughput, this could delay other services using the same channel.
+is high-throughput, this could delay other services using the same connection. Moreover,
+having two services share the same connection reduces the possibility of load balancing, since
+requests are sent to the same server. This would have a negative effect on performance.
 
 
 
@@ -72,7 +72,11 @@ Top recommended video:
 
 Should you send the batched requests concurrently? Why or why not? What are the advantages or disadvantages?
 
-TODO
+If there are multiple servers handling the requests for VideoService or UserService, then sending batched
+requests concurrently could improve performance by parallelizing the requests. However, if there is only
+a single server for each service, sending batched requests would not result in parallelism, but they would
+be processed sequentially. In this case, sending batched requests concurrently does not create an advantage.
+Moreover, the potential errors caused by concurrency (i.e. race conditions) could pose a disadvantage.
 
 
 
@@ -174,10 +178,12 @@ A gRPC channel created via grpc.Dial() provides a connection to a gRPC server on
 and port, i.e. each channel is a single TCP connection. This means that establishing each 
 connection takes all the steps involved in creating a TCP connection, which can be costly if we
 repeatedly create new connections. This is why for a high-throughput service, we would want to
-avoid repeated connection establishment. 
+avoid repeated connection establishment.
 
-I could change my implementation by having UserService and VideoService share a single channel.
-This would reduce the overhead for establishing new connections, but if either service is a
-high-throughput one, it could delay the other service using the same connection.
+To avoid per-request connection establishment, we could have user client and video client share
+a single connection, which we would create in the constructor for VideoRecServiceServer. This
+has the benefit of reducing the overhead of establishing connections, but if either service is 
+a high-throughput one, it could delay the other service using the same connection. Moreover,
+having two clients share the same connection reduces the possibility of load balancing, since
+requests are sent to the same server. This would have a negative effect on performance.
 
-TODO
