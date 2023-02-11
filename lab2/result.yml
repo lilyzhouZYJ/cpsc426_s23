@@ -1,0 +1,16 @@
+apiVersion: cs426.cloud/v1
+kind: LoadgenResult
+metadata:
+  creationTimestamp: "2023-02-11T19:42:56Z"
+  generation: 1
+  name: loadgen-request
+  namespace: yz878
+  resourceVersion: "10864990"
+  uid: 473b1fd0-fd50-4927-b05c-e21a39a4a9f9
+spec:
+  average_latency_ms: 914.96075
+  duration_s: 60
+  error_msg: ""
+  errors: 0
+  requests: 51
+  stale_responses: 0
