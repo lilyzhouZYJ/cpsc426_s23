@@ -13,3 +13,18 @@ the desired state, hence starting a new pod.
 After running `kubectl delete pod <pod-name>` and then running `kubectl get pod`,
 I noted that a new pod has been created. Running `kubectl get deployments` also
 reflects this, because the READY field is 1/1.
+
+
+
+# B4
+
+Result from https://lab2.cs426.cloud/recommend/yz878/video-rec/yz878/:
+
+Welcome! You have chosen user ID 204095 (DuBuque1963/genevievewisoky@kuhlman.net)
+
+Their recommended videos are:
+ 1. wild Radicchio by Alden Ward
+ 2. DarkSeaGreendesk: bypass by Hubert Mraz
+ 3. Handstand: index by Clementine Weber
+ 4. attractive Okra by Katlyn Buckridge
+ 5. The repelling skunk's calm by Dennis Cummerata
