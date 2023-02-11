@@ -10,10 +10,24 @@ Date  Started  Spent Work completed
                      container to host
 02/11  1:00pm  0:30  finish A3
 02/11  1:30pm  1:15  finish Part B
+02/11  2:45pm  1:45  finish Part C
                ----
-               5:15  TOTAL time spent
+               7:00  TOTAL time spent
 
 I discussed my solution with: Anna Zhang, Peter Yu
 
 Discussion (major conceptual and coding difficulties):
 
+The major conceptual difficulty was to understand Docker and Kubernetes, especially
+their key concepts. The notion of Docker container was relative straightforward (also
+because I have experience with Docker), but Kubernetes concepts, such as Service and
+Deployment, were a lot harder to conceptualize. It was also a bit confusing when I
+was going through the Kubernetes setup. It took a while to understand what the YAML
+files were doing, and how the objects interacted. However, after playing around with
+the lab for a bit, I think I have a better understanding of them now.
+
+Another difficulty was to connect Docker containers to the Docker host, i.e. connecting
+the VideoRecServiceServer, which was running on a container, to VideoService and UserService,
+which were running locally on WSL2. I tried several solutions, but none of them worked.
+There were some peculiarities with WSL2 that I could not figure out, so eventually I decided 
+to just move on to deploying on Kubernetes, and that worked. 

@@ -21,5 +21,5 @@ spec:
           image: registry.cs426.cloud/yz878/video-rec-service:latest
           ports:
             - containerPort: 8080
-          args: ["/video_rec_service", "--batch-size=50", "--user-service=user-service.default:8081", "--video-service=video-service.default:8082"]
+          args: ["/video_rec_service", "--client-pool-size=8", "--batch-size=50", "--user-service=user-service.default:8081", "--video-service=video-service.default:8082"]
           imagePullPolicy: Always

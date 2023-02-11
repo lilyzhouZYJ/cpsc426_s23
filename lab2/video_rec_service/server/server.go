@@ -14,6 +14,7 @@ import (
 
 var (
 	port            = flag.Int("port", 8080, "The server port")
+	clientPoolSize	= flag.Int("client-pool-size", 4, "The client pool size")
 	userServiceAddr = flag.String(
 		"user-service",
 		"[::1]:8081",
@@ -55,6 +56,7 @@ func main() {
 		MaxBatchSize:     *maxBatchSize,
 		DisableFallback:  *disableFallback,
 		DisableRetry:     *disableRetry,
+		ClientPoolSize:   *clientPoolSize,
 	})
 	if err != nil {
 		log.Fatalf("failed to start server: %q", err)

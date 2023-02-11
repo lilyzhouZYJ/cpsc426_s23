@@ -28,3 +28,22 @@ Their recommended videos are:
  3. Handstand: index by Clementine Weber
  4. attractive Okra by Katlyn Buckridge
  5. The repelling skunk's calm by Dennis Cummerata
+
+
+
+# C3
+
+What does the load distribution look like with a client pool size of 4? 
+What would you expect to happen if you used 1 client? How about 8? 
+
+With 1 client, there is no load-balancing between the pods, i.e. all requests to 
+UserService would get sent to the same pod, and all requests to VideoService get
+sent to the same pod. Hence, all the load would land on the same pod.
+
+With both 4 and 8 clients, there would be load balancing. The load would thus be
+distributed between the two pods (for both UserService and VideoService).
+
+TODO: differentiate between 4 and 8?
+
+Is 8 more evenly distributed? Not necessarily because each connection always gets
+sent to the same pod?

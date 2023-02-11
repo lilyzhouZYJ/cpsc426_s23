@@ -33,6 +33,8 @@ type VideoRecServiceOptions struct {
 	DisableFallback bool
 	// If set, disable all retries
 	DisableRetry bool
+	// Client pool size
+	ClientPoolSize int
 }
 
 type VideoRecServiceServer struct {
@@ -40,8 +42,10 @@ type VideoRecServiceServer struct {
 	options VideoRecServiceOptions
 
 	// ClientConns
-	userConn *grpc.ClientConn
-	videoConn *grpc.ClientConn
+	userConns []*grpc.ClientConn
+	videoConns []*grpc.ClientConn
+	userConnIndex int32
+	videoConnIndex int32
 	
 	useMock bool
 	mockUserServiceClient *umc.MockUserServiceClient
@@ -65,20 +69,31 @@ type VideoRecServiceServer struct {
 }
 
 func MakeVideoRecServiceServer(options VideoRecServiceOptions) (*VideoRecServiceServer, error) {
-	// Dial to create ClientConns
-	userConn, err := CreateConnection(options.DisableRetry, options.UserServiceAddr)
-	if err != nil {
-		return nil, handleError(codes.Unavailable, "fail to dial to UserService")
-	}
-	videoConn, err := CreateConnection(options.DisableRetry, options.VideoServiceAddr)
-	if err != nil {
-		return nil, handleError(codes.Unavailable, "fail to dial to VideoService")
+	// Dial to create ClientConns;
+	// create ClientPoolSize number of connections for each service
+	userConns := make([]*grpc.ClientConn, 0)
+	videoConns := make([]*grpc.ClientConn, 0)
+
+	for i := 0; i < options.ClientPoolSize; i++ {
+		userConn, err := CreateConnection(options.DisableRetry, options.UserServiceAddr)
+		if err != nil {
+			return nil, handleError(codes.Unavailable, "fail to dial to UserService")
+		}
+		userConns = append(userConns, userConn)
+
+		videoConn, err := CreateConnection(options.DisableRetry, options.VideoServiceAddr)
+		if err != nil {
+			return nil, handleError(codes.Unavailable, "fail to dial to VideoService")
+		}
+		videoConns = append(videoConns, videoConn)
 	}
 
 	server := &VideoRecServiceServer{
 		options: options,
-		userConn: userConn,
-		videoConn: videoConn,
+		userConns: userConns,
+		videoConns: videoConns,
+		userConnIndex: 0,
+		videoConnIndex: 0,
 		useMock: false,
 		trendingVideos: nil,
 		expirationTime: uint64(time.Now().Unix()),
@@ -137,6 +152,21 @@ func CreateConnection(disableRetry bool, addr string) (*grpc.ClientConn, error) 
 	}
 
 	return conn, err
+}
+
+// Helper function2: round robin to determin which ClientConn to use
+func GetUserConnRoundRobin(server *VideoRecServiceServer) *grpc.ClientConn {
+	index := atomic.LoadInt32(&server.userConnIndex)
+	conn := server.userConns[index % int32(len(server.userConns))]
+	atomic.AddInt32(&server.userConnIndex, 1)
+	return conn
+}
+
+func GetVideoConnRoundRobin(server *VideoRecServiceServer) *grpc.ClientConn {
+	index := atomic.LoadInt32(&server.videoConnIndex)
+	conn := server.videoConns[index % int32(len(server.videoConns))]
+	atomic.AddInt32(&server.videoConnIndex, 1)
+	return conn
 }
 
 // Internal helper for UpdateTrendingVideos();
@@ -430,7 +460,8 @@ func (server *VideoRecServiceServer) GetTopVideos(
 		userClient = server.mockUserServiceClient
 	} else {
 		// Create UserService client stub
-		userClient = upb.NewUserServiceClient(server.userConn)
+		userConn := GetUserConnRoundRobin(server)
+		userClient = upb.NewUserServiceClient(userConn)
 	}
 	
 	// (2) Fetch user info for the original user
@@ -492,7 +523,8 @@ func (server *VideoRecServiceServer) GetTopVideos(
 		videoClient = server.mockVideoServiceClient
 	} else {
 		// Create VideoService client stub
-		videoClient = vpb.NewVideoServiceClient(server.videoConn)
+		videoConn := GetVideoConnRoundRobin(server)
+		videoClient = vpb.NewVideoServiceClient(videoConn)
 	}
 	
 	// (2) Fetch video infos for liked videos
