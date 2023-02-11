@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: video-rec
+  labels:
+    app: video-rec
+spec:
+  replicas: 1   # number of pods to run
+  selector:     # which pods are managed by the deployment
+    matchLabels:
+      app: video-rec   
+  template:     # spec of pods to create
+    metadata:
+      labels:
+        app: video-rec
+    spec:
+      imagePullSecrets:
+        - name: docker-credentials
+      containers:
+        - name: video-rec
+          image: registry.cs426.cloud/yz878/video-rec-service:latest
+          ports:
+            - containerPort: 8080
+          args: []
+          imagePullPolicy: Always

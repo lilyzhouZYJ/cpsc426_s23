@@ -4,9 +4,13 @@ ESTIMATE of time to complete assignment: 10 hours
 Date  Started  Spent Work completed
 ----  -------  ----  --------------
 02/09  3:45pm  0:45  set up env
-02/10 10:30am
+02/10 10:30am  1:00  docker overview, build image
+02/10  1:45pm  1:45  trying to test full setup locally (A2);
+                     not working lol, cannot connect docker
+                     container to host
+02/11  1:00pm  0:30  finish A3
                ----
-               0:45  TOTAL time spent
+               4:00  TOTAL time spent
 
 I discussed my solution with: Anna Zhang, Peter Yu
 
