@@ -38,6 +38,10 @@ type VideoRecServiceOptions struct {
 type VideoRecServiceServer struct {
 	pb.UnimplementedVideoRecServiceServer
 	options VideoRecServiceOptions
+
+	// ClientConns
+	userConn *grpc.ClientConn
+	videoConn *grpc.ClientConn
 	
 	useMock bool
 	mockUserServiceClient *umc.MockUserServiceClient
@@ -61,8 +65,20 @@ type VideoRecServiceServer struct {
 }
 
 func MakeVideoRecServiceServer(options VideoRecServiceOptions) (*VideoRecServiceServer, error) {
+	// Dial to create ClientConns
+	userConn, err := CreateConnection(options.DisableRetry, options.UserServiceAddr)
+	if err != nil {
+		return nil, handleError(codes.Unavailable, "fail to dial to UserService")
+	}
+	videoConn, err := CreateConnection(options.DisableRetry, options.VideoServiceAddr)
+	if err != nil {
+		return nil, handleError(codes.Unavailable, "fail to dial to VideoService")
+	}
+
 	server := &VideoRecServiceServer{
 		options: options,
+		userConn: userConn,
+		videoConn: videoConn,
 		useMock: false,
 		trendingVideos: nil,
 		expirationTime: uint64(time.Now().Unix()),
@@ -101,6 +117,26 @@ func MakeVideoRecServiceServerWithMocks(
 	}
 
 	return server
+}
+
+// Helper function
+func CreateConnection(disableRetry bool, addr string) (*grpc.ClientConn, error) {
+	var opts []grpc.DialOption
+	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	
+	conn, err := grpc.Dial(addr, opts...)
+	if err != nil {
+		// Retry
+		if !disableRetry {
+			conn, err = grpc.Dial(addr, opts...)
+		}
+
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return conn, err
 }
 
 // Internal helper for UpdateTrendingVideos();
@@ -164,7 +200,7 @@ func UpdateTrendingVideos(server *VideoRecServiceServer){
 			} else {
 				// Create gRPC channel for VideoService
 				var connVideo *grpc.ClientConn
-				connVideo, err = CreateConnection(server, server.options.VideoServiceAddr)
+				connVideo, err = CreateConnection(server.options.DisableRetry, server.options.VideoServiceAddr)
 				if err == nil {
 					defer connVideo.Close()
 					videoClient = vpb.NewVideoServiceClient(connVideo)
@@ -250,26 +286,6 @@ func updateStats(
 	if useStale {
 		server.numStaleResponses += 1
 	}
-}
-
-// Helper function
-func CreateConnection(server *VideoRecServiceServer, addr string) (*grpc.ClientConn, error) {
-	var opts []grpc.DialOption
-	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	
-	conn, err := grpc.Dial(addr, opts...)
-	if err != nil {
-		// Retry
-		if !server.options.DisableRetry {
-			conn, err = grpc.Dial(addr, opts...)
-		}
-
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return conn, err
 }
 
 // Helper function
@@ -413,25 +429,8 @@ func (server *VideoRecServiceServer) GetTopVideos(
 		// Use the mock client
 		userClient = server.mockUserServiceClient
 	} else {
-		// Create gRPC channel for UserService
-		connUser, err := CreateConnection(server, server.options.UserServiceAddr)
-		if err != nil {
-			// Fallback
-			if !server.options.DisableFallback {
-				cachedVideos, _ := GetCachedTrendingVideos(server, req.GetLimit())
-				if cachedVideos != nil {
-					defer updateStats(server, startTime, false, false, false, true)
-					return &pb.GetTopVideosResponse{Videos: cachedVideos, StaleResponse: true}, nil
-				}
-			}
-
-			defer updateStats(server, startTime, true, true, false, false)
-			return nil, handleError(codes.Unavailable, "fail to dial to UserService")
-		}
-		defer connUser.Close()
-
 		// Create UserService client stub
-		userClient = upb.NewUserServiceClient(connUser)
+		userClient = upb.NewUserServiceClient(server.userConn)
 	}
 	
 	// (2) Fetch user info for the original user
@@ -492,25 +491,8 @@ func (server *VideoRecServiceServer) GetTopVideos(
 	if server.useMock {
 		videoClient = server.mockVideoServiceClient
 	} else {
-		// Create gRPC channel for VideoService
-		connVideo, err := CreateConnection(server, server.options.VideoServiceAddr)
-		if err != nil {
-			// Fallback
-			if !server.options.DisableFallback {
-				cachedVideos, _ := GetCachedTrendingVideos(server, req.GetLimit())
-				if cachedVideos != nil {
-					defer updateStats(server, startTime, false, false, false, true)
-					return &pb.GetTopVideosResponse{Videos: cachedVideos, StaleResponse: true}, nil
-				}
-			}
-
-			defer updateStats(server, startTime, true, false, true, false)
-			return nil, handleError(codes.Unavailable, "fail to dial to VideoService")
-		}
-		defer connVideo.Close()
-
 		// Create VideoService client stub
-		videoClient = vpb.NewVideoServiceClient(connVideo)
+		videoClient = vpb.NewVideoServiceClient(server.videoConn)
 	}
 	
 	// (2) Fetch video infos for liked videos
