@@ -38,12 +38,15 @@ What would you expect to happen if you used 1 client? How about 8?
 
 With 1 client, there is no load-balancing between the pods, i.e. all requests to 
 UserService would get sent to the same pod, and all requests to VideoService get
-sent to the same pod. Hence, all the load would land on the same pod.
+sent to the same pod. Hence, all the load would land on the same pod. With both 
+4 and 8 clients, there would be load balancing between the pods, meaning that the
+load would be distributed between the two pods (for both UserService and VideoService).
 
-With both 4 and 8 clients, there would be load balancing. The load would thus be
-distributed between the two pods (for both UserService and VideoService).
-
-TODO: differentiate between 4 and 8?
-
-Is 8 more evenly distributed? Not necessarily because each connection always gets
-sent to the same pod?
+These predictions were confirmed by my dashboard. With 1 client, only one of the
+pods had any traffic, with a high QPS because all queries are directed to that
+one pod. With 4 or 8 clients, both pods had traffic, with a lower QPS for both
+since the queries are split between two pods. Interestingly, having 8 clients led
+to a more balanced load distribution. I think this is because having more clients
+makes it more likely for the load balancer to distribute the requests evenly
+across the pods, although the validity of this hypothesis depends on the load
+balancing algorithm.
