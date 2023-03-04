@@ -10,11 +10,16 @@ Date  Started  Spent Work completed
 02/27  4:20pm  1:30  Cleaned up RPC receiving handlers
 02/27  5:50pm  0:50  Why am I still working on the same stuff
 03/04  3:50pm  1:00  Pass 3A-1 tests
+03/04  4:50pm  0:35  3A-2 discussion
                ----
-               8:50  TOTAL time spent
+               9:20  TOTAL time spent
 
 I discussed my solution with: Peter Yu, Anna Zhang
 
 Discussion (major conceptual and coding difficulties):
 
 TODO
+- Unit tests for 3A-3 (on leader election)
+- 5 unit tests total
+- ExtraCredit1
+- What to do if a majority of the cluster has failed?
