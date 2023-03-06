@@ -11,8 +11,11 @@ Date  Started  Spent Work completed
 02/27  5:50pm  0:50  Why am I still working on the same stuff
 03/04  3:50pm  1:00  Pass 3A-1 tests
 03/04  4:50pm  0:35  3A-2 discussion
+03/04  5:25pm  1:00  3B
+03/05  7:20pm  2:00  3B
+03/05 10:30pm  1:45  Finish 3B (user time is a bit long?)
                ----
-               9:20  TOTAL time spent
+              14:05  TOTAL time spent
 
 I discussed my solution with: Peter Yu, Anna Zhang
 
@@ -23,3 +26,5 @@ TODO
 - 5 unit tests total
 - ExtraCredit1
 - What to do if a majority of the cluster has failed?
+- Check usage of prevLogTerm and prevLogIndex
+- Check if assume that rf remains the same before and after sending RPC
