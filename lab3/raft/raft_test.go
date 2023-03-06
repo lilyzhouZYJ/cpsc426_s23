@@ -181,7 +181,46 @@ func TestAgreeWithLeaderFailure3B(t *testing.T) {
 	cfg.end()
 }
 
-// Check commitment count matches number of servers
+// My test: check commitment count matches number of servers
+func TestCommitCount3B(t *testing.T) {
+	servers := 10
+	cfg := make_config(t, servers, false, false)
+	defer cfg.cleanup()
+
+	cfg.begin("Test (3B): commitment count matches number of servers")
+
+	leader := cfg.checkOneLeader()
+
+	for i := 1; i <= 7; i++ {
+		// fmt.Printf("i is %d, leader is %d\n", i, leader)
+
+		cfg.disconnect((leader + i) % servers)
+
+		index, _, ok := cfg.rafts[leader].Start(i * 100)
+		if ok != true {
+			t.Fatalf("leader rejected Start()")
+		}
+		if index != i {
+			t.Fatalf("got index %v but expected %v", index, i)
+		}
+
+		// Wait for command to be replicated
+		time.Sleep(2 * RaftElectionTimeout)
+
+		nd, cmd := cfg.nCommitted(index)
+		if nd > 0 && cmd != i*100 {
+			t.Fatalf("expected %d but got %d\n", i*100, cmd)
+		}
+		if i >= 5 && nd > 0 {
+			t.Fatalf("no quorum but some are committed\n")
+		}
+		if i < 5 && nd != servers-i {
+			t.Fatalf("quorum exists but only %d are committed, expected %d\n", nd, servers-i)
+		}
+	}
+
+	cfg.end()
+}
 
 func TestBasicAgree3B(t *testing.T) {
 	servers := 3
