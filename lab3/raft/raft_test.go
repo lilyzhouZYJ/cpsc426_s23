@@ -119,6 +119,70 @@ func TestManyElections3A(t *testing.T) {
 	cfg.end()
 }
 
+// My test
+func TestDisconnectLeader3A(t *testing.T) {
+	servers := 7
+	cfg := make_config(t, servers, false, false)
+	defer cfg.cleanup()
+
+	cfg.begin("Test (3A): repeatedly disconnect leader")
+
+	iters := 10
+	for ii := 1; ii < iters; ii++ {
+		leader := cfg.checkOneLeader()
+		cfg.disconnect(leader)
+
+		cfg.checkOneLeader()
+
+		cfg.connect(leader)
+	}
+
+	cfg.checkOneLeader()
+
+	cfg.end()
+}
+
+// My test
+func TestAgreeWithLeaderFailure3B(t *testing.T) {
+	servers := 10
+	cfg := make_config(t, servers, false, false)
+	defer cfg.cleanup()
+
+	cfg.begin("Test (3B): agreement with leader failures")
+
+	for i := 1; i <= 10; i += 2 {
+		// fmt.Printf("i is %d\n", i)
+		leader := cfg.checkOneLeader()
+		cfg.disconnect(leader)
+
+		index := cfg.one(i*100, servers-1, false)
+		if index != i {
+			t.Fatalf("got index %v but expected %v", index, i)
+		}
+
+		// Reconnect
+		cfg.connect(leader)
+
+		// Wait for old leader to figure out it is no longer the leader
+		time.Sleep(RaftElectionTimeout)
+
+		index2 := cfg.one(i*100+1, servers, false)
+		if index2 != i+1 {
+			t.Fatalf("got index %v but expected %v", index2, i+1)
+		}
+
+		// fmt.Printf("leader is %d\n", cfg.checkOneLeader())
+	}
+
+	cfg.checkOneLeader()
+	cfg.one(101, servers, true)
+	cfg.one(102, servers, true)
+
+	cfg.end()
+}
+
+// Check commitment count matches number of servers
+
 func TestBasicAgree3B(t *testing.T) {
 	servers := 3
 	cfg := make_config(t, servers, false, false)
