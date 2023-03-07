@@ -18,12 +18,12 @@ package raft
 //
 
 import (
-	//	"bytes"
-
+	"bytes"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
-	//	"6.824/labgob"
+	"6.824/labgob"
 	"6.824/labrpc"
 
 	"math/rand"
@@ -63,7 +63,6 @@ type Raft struct {
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
 
-	myRole          int           // 0, 1, or 2
 	electionTimeout time.Duration // randomized election timeout
 	lastHeartbeat   time.Time     // timestamp of last heartbeat received
 	heartbeatInit   bool          // If I'm leader, whether I already have background thread sending heartbeats (TODO?)
@@ -77,6 +76,7 @@ type Raft struct {
 	// Volatile state on all servers:
 	commitIndex int // index of highest log entry known to be committed (initialized to 0, increases monotonically)
 	lastApplied int // index of highest log entry applied to state machine (initialized to 0, increases monotonically)
+	myRole      int // leader, follower, or candidate
 
 	// Volatile state on leaders:
 	// (reinitialized after election)
@@ -119,6 +119,16 @@ func (rf *Raft) persist() {
 	// e.Encode(rf.yyy)
 	// data := w.Bytes()
 	// rf.persister.SaveRaftState(data)
+
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+
+	e.Encode(rf.currentTerm)
+	e.Encode(rf.votedFor)
+	e.Encode(rf.log)
+
+	data := w.Bytes()
+	rf.persister.SaveRaftState(data)
 }
 
 // restore previously persisted state.
@@ -139,6 +149,21 @@ func (rf *Raft) readPersist(data []byte) {
 	//   rf.xxx = xxx
 	//   rf.yyy = yyy
 	// }
+
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+
+	var currentTerm int
+	var votedFor int
+	var log []Log
+
+	if d.Decode(&currentTerm) != nil || d.Decode(&votedFor) != nil || d.Decode(&log) != nil {
+		fmt.Println("readPersist(): error in decoding")
+	} else {
+		rf.currentTerm = currentTerm
+		rf.votedFor = votedFor
+		rf.log = log
+	}
 }
 
 // AppendEntries RPC request structure
@@ -195,6 +220,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.Term = rf.currentTerm
 		return
 	}
+
+	defer rf.persist()
 
 	// (2) Reset election timer as long as the AppendEntries does not have stale term number
 	rf.lastHeartbeat = time.Now()
@@ -289,6 +316,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		reply.Term = rf.currentTerm
 		return
 	}
+
+	defer rf.persist()
 
 	// (2) If RPC request or response contains term T > currentTerm: set currentTerm = T,
 	//     convert to follower (5.1)
@@ -416,6 +445,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 
 	// (1) Append entry to local log
 	rf.log = append(rf.log, Log{Command: command, Term: rf.currentTerm})
+	rf.persist()
 	// fmt.Println(rf.log)
 
 	// (2) Send AppendEntries to all followers
@@ -454,6 +484,7 @@ func (rf *Raft) sendAppendEntriesToOnePeer(peerId int, isHeartbeat bool) {
 	rf.mu.Lock()
 
 	currentTerm := rf.currentTerm
+	// fmt.Printf("peer count %d %d, peerId %d\n", len(rf.peers), len(rf.nextIndex), peerId)
 	nextIndex := rf.nextIndex[peerId]
 
 	rf.mu.Unlock()
@@ -556,6 +587,7 @@ func (rf *Raft) sendAppendEntriesToOnePeer(peerId int, isHeartbeat bool) {
 			}
 		}
 
+		rf.persist()
 		rf.mu.Unlock()
 
 		time.Sleep(10 * time.Millisecond)
@@ -624,6 +656,7 @@ func (rf *Raft) requestVoteFromPeer(
 		rf.currentTerm = reply.Term
 		rf.myRole = roleFollower
 		rf.votedFor = -1
+		rf.persist()
 		return
 	}
 
@@ -635,10 +668,16 @@ func (rf *Raft) requestVoteFromPeer(
 	// Check if I have become leader
 	if rf.myRole != roleLeader && int(atomic.LoadUint64(votesGranted))*2 > len(rf.peers) {
 		rf.myRole = roleLeader
+		rf.persist()
+
+		rf.nextIndex = rf.nextIndex[0:0]
+		rf.matchIndex = rf.matchIndex[0:0]
 		for i := 0; i < len(rf.peers); i++ {
 			rf.nextIndex = append(rf.nextIndex, len(rf.log)+1) // initialized to leader last log index + 1
 			rf.matchIndex = append(rf.matchIndex, 0)           // initialized to 0
 		}
+
+		// fmt.Println(rf.nextIndex)
 
 		// Initialize leader to start heartbeat
 		// fmt.Printf("%d is leader\n", rf.me)
@@ -705,13 +744,12 @@ func (rf *Raft) ticker() {
 
 				// (5) Send RequestVote RPCs to all other servers
 				rf.startVoting()
-
-				// - If votes received from majority of servers: become leader
 			}
 		}
 
 		// Sleep and wait for timeout
 		// remainingTime := rf.electionTimeout - time.Since(rf.lastHeartbeat)
+		rf.persist()
 		rf.mu.Unlock()
 		// time.Sleep(remainingTime)
 		time.Sleep(10 * time.Millisecond)
