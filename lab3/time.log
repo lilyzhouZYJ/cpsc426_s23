@@ -17,8 +17,9 @@ Date  Started  Spent Work completed
 03/06 12:40pm  0:50  Add 2 unit tests
 03/06  1:30pm  0:25  More test
 03/06  7:00pm  3:00  3C: not passing TestFigure8Unreliable3C and both Churn tests
+03/07  8:50pm  3:00  Tried to refactor, not passing 3B tests (see lab3-refactor branch)
                ----
-              18:30  TOTAL time spent
+              21:30  TOTAL time spent
 
 I discussed my solution with: Peter Yu, Anna Zhang
 
