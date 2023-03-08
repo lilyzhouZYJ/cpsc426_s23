@@ -517,6 +517,8 @@ func TestBackup3B(t *testing.T) {
 	cfg.disconnect((leader1 + 3) % servers)
 	cfg.disconnect((leader1 + 4) % servers)
 
+	fmt.Printf("leader1 %d\n", leader1)
+
 	// submit lots of commands that won't commit
 	for i := 0; i < 50; i++ {
 		cfg.rafts[leader1].Start(rand.Int())
@@ -537,6 +539,8 @@ func TestBackup3B(t *testing.T) {
 		cfg.one(rand.Int(), 3, true)
 	}
 
+	fmt.Println("DONE")
+
 	// now another partitioned leader and one follower
 	leader2 := cfg.checkOneLeader()
 	other := (leader1 + 2) % servers
@@ -545,10 +549,14 @@ func TestBackup3B(t *testing.T) {
 	}
 	cfg.disconnect(other)
 
+	fmt.Printf("leader2 %d\n", leader2)
+
 	// lots more commands that won't commit
 	for i := 0; i < 50; i++ {
 		cfg.rafts[leader2].Start(rand.Int())
 	}
+
+	fmt.Println("DONE2")
 
 	time.Sleep(RaftElectionTimeout / 2)
 
