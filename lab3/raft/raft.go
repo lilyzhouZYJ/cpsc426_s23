@@ -183,6 +183,12 @@ type AppendEntriesArgs struct {
 type AppendEntriesReply struct {
 	Term    int  // currentTerm, for leader to update itself
 	Success bool // true if follower contained entry matching prevLogIndex and prevLogTerm
+
+	// 3C-3 optimization: fast log backtracking
+	// When rejecting an AppendEntries request, the follower and include the term of the
+	// conflicting entry and the first index it stores for that term
+	ConflictTerm  int
+	ConflictIndex int
 }
 
 // example RequestVote RPC arguments structure.
@@ -244,9 +250,24 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	// (5) Log consistency checK:
 	//     Reply false if log doesn't contain an entry at prevLogIndex whose term matches
 	//     prevLogTerm (5.3)
-	if args.PrevLogIndex > len(rf.log) || (args.PrevLogIndex > 0 && rf.log[args.PrevLogIndex-1].Term != args.PrevLogTerm) {
+	if args.PrevLogIndex > len(rf.log) {
 		reply.Success = false
 		reply.Term = rf.currentTerm
+		reply.ConflictIndex = len(rf.log)
+		reply.ConflictTerm = -1
+		return
+	}
+	if args.PrevLogIndex > 0 && rf.log[args.PrevLogIndex-1].Term != args.PrevLogTerm {
+		reply.Success = false
+		reply.Term = rf.currentTerm
+		reply.ConflictTerm = rf.log[args.PrevLogIndex-1].Term
+		// Find the first log entry with the conflict term
+		for i := 1; i <= len(rf.log); i++ {
+			if rf.log[i-1].Term == reply.ConflictTerm {
+				reply.ConflictIndex = i
+				break
+			}
+		}
 		return
 	}
 
@@ -491,23 +512,17 @@ func (rf *Raft) sendAppendEntriesToOnePeer(peerId int, isHeartbeat bool) {
 
 	success := false
 
-	for !success && nextIndex >= 0 {
+	for !success && nextIndex > 0 {
 		rf.mu.Lock()
+
 		prevLogIndex := nextIndex - 1
 		prevLogTerm := -1
 		if prevLogIndex > 0 {
 			prevLogTerm = rf.log[prevLogIndex-1].Term
 		}
 
-		// Which entries to send
+		// Determine the entries to send
 		entries := make([]Log, 0)
-		// if !isHeartbeat {
-		// 	// If last log index >= nextIndex for a follower: send
-		// 	// AppendEntries RPC with log entries starting at nextIndex
-		// 	if len(rf.log)-1 >= nextIndex {
-		// 		entries = rf.log[nextIndex:]
-		// 	}
-		// }
 		if len(rf.log) >= nextIndex {
 			entries = append(entries, rf.log[nextIndex-1:]...)
 		}
@@ -547,12 +562,11 @@ func (rf *Raft) sendAppendEntriesToOnePeer(peerId int, isHeartbeat bool) {
 				// To terminate retry
 				success = true
 
-				// If there exists an N such that N > commitIndex,
-				// a majority of matchIndex[i] ≥ N, and
-				// log[N].term == currentTerm:
+				// If there exists an N such that
+				//   (a) N > commitIndex,
+				//   (b) a majority of matchIndex[i] ≥ N, and
+				//   (c) log[N].term == currentTerm:
 				// set commitIndex = N (§5.3, §5.4).
-				// fmt.Printf("%d commitIndex is %d\n", rf.me, rf.commitIndex)
-				// fmt.Println(rf.log)
 				for n := rf.commitIndex + 1; n <= len(rf.log); n++ {
 					if rf.log[n-1].Term == currentTerm {
 						matchIndexCount := 1 // add the leader itself
@@ -562,7 +576,6 @@ func (rf *Raft) sendAppendEntriesToOnePeer(peerId int, isHeartbeat bool) {
 							}
 						}
 						if matchIndexCount*2 > len(rf.peers) {
-							// fmt.Printf("%d change commitIndex from %d to %d\n", rf.me, rf.commitIndex, n)
 							rf.commitIndex = n
 							for rf.lastApplied < rf.commitIndex {
 								rf.lastApplied += 1
@@ -579,7 +592,29 @@ func (rf *Raft) sendAppendEntriesToOnePeer(peerId int, isHeartbeat bool) {
 			} else {
 				// If AppendEntries fails because of log inconsistency:
 				// decrement nextIndex and retry (5.3)
-				nextIndex -= 1
+				// nextIndex -= 1
+
+				// Optimization:
+				// Leader can decrement nextIndex to bypass all of the conflicting entries in that term (5.3)
+				foundConflictingTerm := false
+				for i := 1; i <= len(rf.log); i++ {
+					if rf.log[i-1].Term == reply.ConflictTerm {
+						// My log includes entries from the conflicting term
+						foundConflictingTerm = true
+					}
+
+					if rf.log[i-1].Term > reply.ConflictTerm {
+						if foundConflictingTerm {
+							nextIndex = i
+						} else {
+							nextIndex = reply.ConflictIndex
+						}
+						rf.nextIndex[peerId] = nextIndex
+						break
+					}
+				}
+
+				// fmt.Printf("%d (log %+v), nextIndex[%d]=%d\n", rf.me, rf.log, peerId, rf.nextIndex[peerId])
 			}
 		}
 
@@ -683,7 +718,7 @@ func (rf *Raft) startVoting() {
 // Note: caller should be holding lock
 
 func (rf *Raft) convertToFollower(term int, votedFor int) {
-	DPrintf("%d converts to follower for term %d\n", rf.me, rf.currentTerm)
+	DPrintf("%d converts to follower for term %d\n", rf.me, term)
 
 	rf.myRole = roleFollower
 	rf.currentTerm = term
@@ -718,7 +753,7 @@ func (rf *Raft) convertToCandidate() {
 	// (3) Vote for self
 	rf.votedFor = rf.me
 	// (4) Reset election timer
-	rf.resetElectionTimer()
+	rf.lastHeartbeat = time.Now()
 	// (5) Each candidate restarts its randomized election timeout at the start of an election (5.2)
 	rf.electionTimeout = generateElectionTimeout()
 

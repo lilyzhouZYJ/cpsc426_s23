@@ -17,8 +17,12 @@ Date  Started  Spent Work completed
 03/06 12:40pm  0:50  Add 2 unit tests
 03/06  1:30pm  0:25  More test
 03/06  7:00pm  3:00  3C: not passing TestFigure8Unreliable3C and both Churn tests
+03/07  8:50pm  4:30  Tried to refactor, not passing 3B tests (see lab3-refactor branch)
+03/08  1:30pm  1:00  Continue refactoring
+03/08  3:40pm  0:20  lab3-refactor might be a working version (at least for 3A and 3B)
+03/08  4:00pm  1:00  Implement 3C-3 optimization, consistently passes 3A and 3B tests, but not the last 2 tests of 3C
                ----
-              18:30  TOTAL time spent
+              25:15  TOTAL time spent
 
 I discussed my solution with: Peter Yu, Anna Zhang
 
@@ -31,3 +35,4 @@ TODO
 - Check usage of prevLogTerm and prevLogIndex
 - Check if assume that rf remains the same before and after sending RPC
 - Follower/candidate crashes?
+- Check time of testing
