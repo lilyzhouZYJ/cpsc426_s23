@@ -65,7 +65,6 @@ type Raft struct {
 
 	electionTimeout time.Duration // randomized election timeout
 	lastHeartbeat   time.Time     // timestamp of last heartbeat received
-	heartbeatInit   bool          // If I'm leader, whether I already have background thread sending heartbeats (TODO?)
 
 	// Persistent state on all servers:
 	// (updated on stable storage before responding to RPCs)
@@ -539,7 +538,6 @@ func (rf *Raft) sendAppendEntriesToOnePeer(peerId int, isHeartbeat bool) {
 			return
 		}
 
-		// TODO: do we need this?
 		if rf.currentTerm != args.Term || rf.myRole != roleLeader {
 			// I'm no longer the leader, or my term has been incremented:
 			// stop sending AppendEntries
@@ -660,7 +658,7 @@ func (rf *Raft) requestVoteFromPeer(
 		return
 	}
 
-	// TODO: remove this if
+	// If my term and my role has changed, this vote no longer matters
 	if rf.currentTerm != args.Term || rf.myRole != roleCandidate {
 		return
 	}
@@ -806,7 +804,6 @@ func (rf *Raft) startCandidate() {
 		// (a) Granted vote to a candidate
 		// (b) Received heartbeat from valid leader
 		// Do nothing (I should be follower now)
-		// TODO: or rf.convertToFollower(rf.currentTerm, -1)?
 	case <-time.After(timeout):
 		// Election timeout: restart election
 		rf.mu.Lock()
