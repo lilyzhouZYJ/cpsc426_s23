@@ -22,12 +22,30 @@ Date  Started  Spent Work completed
 03/08  3:40pm  0:20  lab3-refactor might be a working version (at least for 3A and 3B)
 03/08  4:00pm  1:00  Implement 3C-3 optimization, consistently passes 3A and 3B tests, but not the last 2 tests of 3C
 03/08  7:30pm  1:20  Make some tweaks, pass TestReliableChurn3C with better probability
+03/08  8:50pm  1:00  Seem to be fully working
                ----
-              26:35  TOTAL time spent
+              27:35  TOTAL time spent
 
 I discussed my solution with: Peter Yu, Anna Zhang
 
 Discussion (major conceptual and coding difficulties):
+
+The most difficult part was getting started with understanding Raft. This involved
+many hours of close-reading the Raft paper and playing with the online visualization
+tool. It was also difficult to piece together the parts of the paper, i.e. not all
+the information relevant to the same function is located in the same place, so it's
+not clear how each function should be written. Also, there are certain ambiguities in
+the paper that require more thinking just to figure out exactly what the paper means.
+
+Debugging was very frustrating, as there were small things that I missed that were
+very hard to spot. I also didn't address the fact that the server states may have
+changed after sending an RPC request, so this led to some bugs.
+
+Also, I started off without using a clear "state-machine" kind of structure for the
+server role transitions. This made my code less readable, and as I was debugging I
+decided to refactor just so that I can better understand and conceptualize what exactly
+I wrote. I spent many hours on this, but I think it was a fruitful experience that led
+to cleaner, more intuitive code.
 
 TODO
 - 5 unit tests total

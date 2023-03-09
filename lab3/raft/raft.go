@@ -253,7 +253,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	if args.PrevLogIndex > len(rf.log) {
 		reply.Success = false
 		reply.Term = rf.currentTerm
-		reply.ConflictIndex = len(rf.log)
+		reply.ConflictIndex = len(rf.log) + 1
 		reply.ConflictTerm = -1
 		return
 	}
@@ -498,37 +498,23 @@ func (rf *Raft) resetElectionTimer() {
 
 // Helper to send AppendEntries to one peer
 func (rf *Raft) sendAppendEntriesToOnePeer(peerId int, isHeartbeat bool) {
-	rf.mu.Lock()
-
-	if rf.myRole != roleLeader {
-		rf.mu.Unlock()
-		return
-	}
-
-	currentTerm := rf.currentTerm
-	nextIndex := rf.nextIndex[peerId]
-
-	rf.mu.Unlock()
-
-	success := false
-
-	for !success && nextIndex > 0 {
+	for rf.killed() == false {
 		rf.mu.Lock()
+		if rf.myRole != roleLeader {
+			rf.mu.Unlock()
+			return
+		}
 
-		prevLogIndex := nextIndex - 1
-		prevLogTerm := -1
+		prevLogIndex := rf.nextIndex[peerId] - 1
+		prevLogTerm := 0
 		if prevLogIndex > 0 {
 			prevLogTerm = rf.log[prevLogIndex-1].Term
 		}
 
-		// Determine the entries to send
-		entries := make([]Log, 0)
-		if len(rf.log) >= nextIndex {
-			entries = append(entries, rf.log[nextIndex-1:]...)
-		}
-
+		// AppendEntries args to send
+		entries := append([]Log{}, rf.log[rf.nextIndex[peerId]-1:]...)
 		args := &AppendEntriesArgs{
-			Term:         currentTerm,
+			Term:         rf.currentTerm,
 			LeaderId:     rf.me,
 			PrevLogIndex: prevLogIndex,
 			PrevLogTerm:  prevLogTerm,
@@ -547,53 +533,66 @@ func (rf *Raft) sendAppendEntriesToOnePeer(peerId int, isHeartbeat bool) {
 
 		// If RPC request or response contains term T > currentTerm:
 		// set currentTerm = T, convert to follower (Section 5.1);
-		if reply.Term > currentTerm {
+		if reply.Term > rf.currentTerm {
 			rf.convertToFollower(reply.Term, -1)
 			rf.mu.Unlock()
 			return
 		}
 
-		if rf.myRole == roleLeader && currentTerm == reply.Term {
-			if reply.Success {
-				// If successful: update nextIndex and matchIndex for follower (5.3)
-				rf.nextIndex[peerId] = nextIndex + len(entries)
-				rf.matchIndex[peerId] = prevLogIndex + len(entries)
+		// TODO: do we need this?
+		if rf.currentTerm != args.Term || rf.myRole != roleLeader {
+			// I'm no longer the leader, or my term has been incremented:
+			// stop sending AppendEntries
+			rf.mu.Unlock()
+			return
+		}
 
-				// To terminate retry
-				success = true
+		if reply.Success {
+			// If successful: update nextIndex and matchIndex for follower (5.3)
+			rf.matchIndex[peerId] = prevLogIndex + len(entries)
+			rf.nextIndex[peerId] = rf.matchIndex[peerId] + 1
+			// We don't do the following because rf.nextIndex[peerId] may have changed:
+			// rf.nextIndex[peerId] = rf.nextIndex[peerId] + len(entries)
 
-				// If there exists an N such that
-				//   (a) N > commitIndex,
-				//   (b) a majority of matchIndex[i] ≥ N, and
-				//   (c) log[N].term == currentTerm:
-				// set commitIndex = N (§5.3, §5.4).
-				for n := rf.commitIndex + 1; n <= len(rf.log); n++ {
-					if rf.log[n-1].Term == currentTerm {
-						matchIndexCount := 1 // add the leader itself
-						for i, _ := range rf.peers {
-							if rf.matchIndex[i] >= n {
-								matchIndexCount += 1
-							}
-						}
-						if matchIndexCount*2 > len(rf.peers) {
-							rf.commitIndex = n
-							for rf.lastApplied < rf.commitIndex {
-								rf.lastApplied += 1
-								msg := ApplyMsg{
-									CommandValid: true,
-									Command:      rf.log[rf.lastApplied-1].Command,
-									CommandIndex: rf.lastApplied,
-								}
-								rf.applyCh <- msg
-							}
+			// If there exists an N such that
+			//   (a) N > commitIndex,
+			//   (b) a majority of matchIndex[i] ≥ N, and
+			//   (c) log[N].term == currentTerm:
+			// set commitIndex = N (§5.3, §5.4).
+			for n := rf.commitIndex + 1; n <= len(rf.log); n++ {
+				if rf.log[n-1].Term == rf.currentTerm {
+					matchIndexCount := 1 // add the leader itself
+					for i, _ := range rf.peers {
+						if rf.matchIndex[i] >= n {
+							matchIndexCount += 1
 						}
 					}
+					if matchIndexCount*2 > len(rf.peers) {
+						rf.commitIndex = n
+					}
 				}
-			} else {
-				// If AppendEntries fails because of log inconsistency:
-				// decrement nextIndex and retry (5.3)
-				// nextIndex -= 1
+			}
+			for rf.lastApplied < rf.commitIndex {
+				rf.lastApplied += 1
+				msg := ApplyMsg{
+					CommandValid: true,
+					Command:      rf.log[rf.lastApplied-1].Command,
+					CommandIndex: rf.lastApplied,
+				}
+				rf.applyCh <- msg
+			}
+			rf.mu.Unlock()
+			return
+		} else {
+			// If AppendEntries fails because of log inconsistency:
+			// decrement nextIndex and retry (5.3)
+			// rf.nextIndex[peerId] -= 1
 
+			if reply.ConflictTerm <= 0 {
+				// There is no conflicting entry, because the peer does not
+				// contain an entry at prevLogIndex
+				rf.nextIndex[peerId] = reply.ConflictIndex
+			} else {
 				// Optimization:
 				// Leader can decrement nextIndex to bypass all of the conflicting entries in that term (5.3)
 				foundConflictingTerm := false
@@ -605,23 +604,25 @@ func (rf *Raft) sendAppendEntriesToOnePeer(peerId int, isHeartbeat bool) {
 
 					if rf.log[i-1].Term > reply.ConflictTerm {
 						if foundConflictingTerm {
-							nextIndex = i
+							rf.nextIndex[peerId] = i
+							// fmt.Printf("setting nextindex[%d] to %d\n", peerId, i)
 						} else {
-							nextIndex = reply.ConflictIndex
+							rf.nextIndex[peerId] = reply.ConflictIndex
+							// fmt.Printf("setting nextindex[%d] to %d\n", peerId, reply.ConflictIndex)
 						}
-						rf.nextIndex[peerId] = nextIndex
 						break
 					}
 				}
-
-				// fmt.Printf("%d (log %+v), nextIndex[%d]=%d\n", rf.me, rf.log, peerId, rf.nextIndex[peerId])
 			}
+
+			// The (if reply.ConflictTerm <= 0) block above eliminates the need for this:
+			// if rf.nextIndex[peerId] < 1 {
+			// 	rf.nextIndex[peerId] = 1
+			// }
+
+			// fmt.Printf("%d (log %+v), nextIndex[%d]=%d\n", rf.me, rf.log, peerId, rf.nextIndex[peerId])
+			rf.mu.Unlock()
 		}
-
-		rf.persist()
-		rf.mu.Unlock()
-
-		time.Sleep(10 * time.Millisecond)
 	}
 }
 
@@ -659,6 +660,11 @@ func (rf *Raft) requestVoteFromPeer(
 		return
 	}
 
+	// TODO: remove this if
+	if rf.currentTerm != args.Term || rf.myRole != roleCandidate {
+		return
+	}
+
 	// Increment vote
 	if reply.VoteGranted {
 		atomic.AddUint64(votesGranted, 1)
@@ -667,19 +673,9 @@ func (rf *Raft) requestVoteFromPeer(
 
 	// Check if I have become leader
 	if rf.myRole == roleCandidate && int(atomic.LoadUint64(votesGranted))*2 > len(rf.peers) {
-		rf.myRole = roleLeader
-		rf.persist()
-
-		rf.nextIndex = rf.nextIndex[0:0]
-		rf.matchIndex = rf.matchIndex[0:0]
-		for i := 0; i < len(rf.peers); i++ {
-			rf.nextIndex = append(rf.nextIndex, len(rf.log)+1) // initialized to leader last log index + 1
-			rf.matchIndex = append(rf.matchIndex, 0)           // initialized to 0
-		}
-		rf.matchIndex[rf.me] = len(rf.log)
-
 		DPrintf("%d has been elected\n", rf.me)
 
+		rf.convertToLeader()
 		go func() {
 			rf.voteSuccessCh <- true
 		}()
@@ -690,6 +686,10 @@ func (rf *Raft) requestVoteFromPeer(
 func (rf *Raft) startVoting() {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+
+	if rf.myRole != roleCandidate {
+		return
+	}
 
 	// Atomic counter for total votes
 	var votesGranted uint64 = 1 // there's always a vote from self
@@ -772,12 +772,11 @@ func (rf *Raft) startLeader() {
 			rf.mu.Unlock()
 			return
 		}
+		rf.mu.Unlock()
 
 		// Send heartbeat to all peers
 		DPrintf("%d sends heartbeat to all peers for term %d\n", rf.me, rf.currentTerm)
 		rf.sendAppendEntriesToAllPeers(true)
-
-		rf.mu.Unlock()
 
 		// Pause before sending next heartbeat
 		time.Sleep(hbPeriod)
@@ -813,7 +812,6 @@ func (rf *Raft) startCandidate() {
 		rf.mu.Lock()
 		DPrintf("%d hit election timeout, restart election for term %d\n", rf.me, rf.currentTerm+1)
 		rf.convertToCandidate()
-		rf.persist()
 		rf.mu.Unlock()
 	}
 }
@@ -826,7 +824,8 @@ func (rf *Raft) startFollower() {
 		return
 	}
 
-	timeout := rf.electionTimeout - time.Since(rf.lastHeartbeat)
+	// timeout := rf.electionTimeout - time.Since(rf.lastHeartbeat)
+	timeout := rf.electionTimeout
 
 	rf.mu.Unlock()
 
