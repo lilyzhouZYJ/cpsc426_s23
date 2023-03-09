@@ -23,8 +23,9 @@ Date  Started  Spent Work completed
 03/08  4:00pm  1:00  Implement 3C-3 optimization, consistently passes 3A and 3B tests, but not the last 2 tests of 3C
 03/08  7:30pm  1:20  Make some tweaks, pass TestReliableChurn3C with better probability
 03/08  8:50pm  1:00  Seem to be fully working
+03/09 10:00am  0:20  Unit tests
                ----
-              27:35  TOTAL time spent
+              27:55  TOTAL time spent
 
 I discussed my solution with: Peter Yu, Anna Zhang
 

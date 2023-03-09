@@ -692,6 +692,51 @@ loop:
 	cfg.end()
 }
 
+// My function
+func TestPersistWithFail3C(t *testing.T) {
+	servers := 5
+	cfg := make_config(t, servers, false, false)
+	defer cfg.cleanup()
+
+	cfg.begin("Test (3C): persistence with failure")
+
+	cfg.one(101, servers, true)
+	leader := cfg.checkOneLeader()
+
+	cfg.crash1((leader + 1) % servers)
+
+	cfg.one(102, 4, true)
+
+	cfg.start1((leader+1)%servers, cfg.applier)
+	cfg.connect((leader + 1) % servers)
+
+	cfg.one(103, servers, true)
+	cfg.end()
+}
+
+// My function
+func TestPersistLeaderFail3C(t *testing.T) {
+	servers := 5
+	cfg := make_config(t, servers, false, false)
+	defer cfg.cleanup()
+
+	cfg.begin("Test (3C): persistence")
+
+	cfg.one(101, servers, true)
+
+	leader := cfg.checkOneLeader()
+	_, _, ok := cfg.rafts[leader].Start(102)
+	if !ok {
+		cfg.t.Fatalf("leader rejected\n")
+	}
+	cfg.crash1(leader)
+
+	cfg.start1(leader, cfg.applier)
+	cfg.connect(leader)
+
+	cfg.one(103, servers, true)
+}
+
 func TestPersist13C(t *testing.T) {
 	servers := 3
 	cfg := make_config(t, servers, false, false)
