@@ -24,8 +24,9 @@ Date  Started  Spent Work completed
 03/08  7:30pm  1:20  Make some tweaks, pass TestReliableChurn3C with better probability
 03/08  8:50pm  1:00  Seem to be fully working
 03/09 10:00am  0:20  Unit tests
+03/09 11:05am  0:10  ExtraCredit1
                ----
-              27:55  TOTAL time spent
+              28:05  TOTAL time spent
 
 I discussed my solution with: Peter Yu, Anna Zhang
 
@@ -50,9 +51,4 @@ to cleaner, more intuitive code.
 
 TODO
 - 5 unit tests total
-- ExtraCredit1
-- What to do if a majority of the cluster has failed?
-- Check usage of prevLogTerm and prevLogIndex
-- Check if assume that rf remains the same before and after sending RPC
-- Follower/candidate crashes?
 - Check time of testing

@@ -692,7 +692,7 @@ loop:
 	cfg.end()
 }
 
-// My function
+// My test
 func TestPersistWithFail3C(t *testing.T) {
 	servers := 5
 	cfg := make_config(t, servers, false, false)
@@ -714,7 +714,7 @@ func TestPersistWithFail3C(t *testing.T) {
 	cfg.end()
 }
 
-// My function
+// My test
 func TestPersistLeaderFail3C(t *testing.T) {
 	servers := 5
 	cfg := make_config(t, servers, false, false)
