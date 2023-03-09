@@ -21,8 +21,9 @@ Date  Started  Spent Work completed
 03/08  1:30pm  1:00  Continue refactoring
 03/08  3:40pm  0:20  lab3-refactor might be a working version (at least for 3A and 3B)
 03/08  4:00pm  1:00  Implement 3C-3 optimization, consistently passes 3A and 3B tests, but not the last 2 tests of 3C
+03/08  7:30pm  1:20  Make some tweaks, pass TestReliableChurn3C with better probability
                ----
-              25:15  TOTAL time spent
+              26:35  TOTAL time spent
 
 I discussed my solution with: Peter Yu, Anna Zhang
 

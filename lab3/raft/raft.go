@@ -223,7 +223,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	DPrintf("%d received AppendEntries from %d (args: %+v), term: %d, commitIndex: %d, log: %v\n", rf.me, args.LeaderId, args, rf.currentTerm, rf.commitIndex, rf.log)
+	DPrintf("%d received AppendEntries from %d (args: %+v), term: %d, commitIndex: %d\n", rf.me, args.LeaderId, args, rf.currentTerm, rf.commitIndex)
 
 	// (1) Always reject request if args.term < currentTerm (5.1)
 	if args.Term < rf.currentTerm {
@@ -483,8 +483,8 @@ func (rf *Raft) killed() bool {
 
 // Helper to generate randomized election timeout
 func generateElectionTimeout() time.Duration {
-	// 300-500 milliseconds
-	return time.Duration(rand.Intn(200)+300) * time.Millisecond
+	// 200-400 milliseconds
+	return time.Duration(rand.Intn(200)+200) * time.Millisecond
 }
 
 // Helper to reset election timer
@@ -795,7 +795,7 @@ func (rf *Raft) startCandidate() {
 
 	go rf.startVoting()
 
-	timeout := rf.electionTimeout
+	timeout := rf.electionTimeout - time.Since(rf.lastHeartbeat)
 
 	rf.mu.Unlock()
 
@@ -812,7 +812,7 @@ func (rf *Raft) startCandidate() {
 		// Election timeout: restart election
 		rf.mu.Lock()
 		DPrintf("%d hit election timeout, restart election for term %d\n", rf.me, rf.currentTerm+1)
-		rf.currentTerm += 1
+		rf.convertToCandidate()
 		rf.persist()
 		rf.mu.Unlock()
 	}
@@ -827,6 +827,7 @@ func (rf *Raft) startFollower() {
 	}
 
 	timeout := rf.electionTimeout - time.Since(rf.lastHeartbeat)
+
 	rf.mu.Unlock()
 
 	select {
