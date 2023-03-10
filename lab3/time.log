@@ -17,18 +17,34 @@ Date  Started  Spent Work completed
 03/06 12:40pm  0:50  Add 2 unit tests
 03/06  1:30pm  0:25  More test
 03/06  7:00pm  3:00  3C: not passing TestFigure8Unreliable3C and both Churn tests
-03/07  8:50pm  3:00  Tried to refactor, not passing 3B tests (see lab3-refactor branch)
+03/07  8:50pm  4:30  Tried to refactor, not passing 3B tests (see lab3-refactor branch)
+03/08  1:30pm  1:00  Continue refactoring
+03/08  3:40pm  0:20  lab3-refactor might be a working version (at least for 3A and 3B)
+03/08  4:00pm  1:00  Implement 3C-3 optimization, consistently passes 3A and 3B tests, but not the last 2 tests of 3C
+03/08  7:30pm  1:20  Make some tweaks, pass TestReliableChurn3C with better probability
+03/08  8:50pm  1:00  Seem to be fully working
+03/09 10:00am  0:20  Unit tests
+03/09 11:05am  0:10  ExtraCredit1
                ----
-              21:30  TOTAL time spent
+              28:05  TOTAL time spent
 
 I discussed my solution with: Peter Yu, Anna Zhang
 
 Discussion (major conceptual and coding difficulties):
 
-TODO
-- 5 unit tests total
-- ExtraCredit1
-- What to do if a majority of the cluster has failed?
-- Check usage of prevLogTerm and prevLogIndex
-- Check if assume that rf remains the same before and after sending RPC
-- Follower/candidate crashes?
+The most difficult part was getting started with understanding Raft. This involved
+many hours of close-reading the Raft paper and playing with the online visualization
+tool. It was also difficult to piece together the parts of the paper, i.e. not all
+the information relevant to the same function is located in the same place, so it's
+not clear how each function should be written. Also, there are certain ambiguities in
+the paper that require more thinking just to figure out exactly what the paper means.
+
+Debugging was very frustrating, as there were small things that I missed that were
+very hard to spot. I also didn't address the fact that the server states may have
+changed after sending an RPC request, so this led to some bugs.
+
+Also, I started off without using a clear "state-machine" kind of structure for the
+server role transitions. This made my code less readable, and as I was debugging I
+decided to refactor just so that I can better understand and conceptualize what exactly
+I wrote. I spent many hours on this, but I think it was a fruitful experience that led
+to cleaner, more intuitive code.

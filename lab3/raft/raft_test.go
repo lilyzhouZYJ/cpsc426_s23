@@ -517,6 +517,8 @@ func TestBackup3B(t *testing.T) {
 	cfg.disconnect((leader1 + 3) % servers)
 	cfg.disconnect((leader1 + 4) % servers)
 
+	// fmt.Printf("leader1 %d\n", leader1)
+
 	// submit lots of commands that won't commit
 	for i := 0; i < 50; i++ {
 		cfg.rafts[leader1].Start(rand.Int())
@@ -537,6 +539,8 @@ func TestBackup3B(t *testing.T) {
 		cfg.one(rand.Int(), 3, true)
 	}
 
+	// fmt.Println("DONE")
+
 	// now another partitioned leader and one follower
 	leader2 := cfg.checkOneLeader()
 	other := (leader1 + 2) % servers
@@ -545,10 +549,14 @@ func TestBackup3B(t *testing.T) {
 	}
 	cfg.disconnect(other)
 
+	// fmt.Printf("leader2 %d\n", leader2)
+
 	// lots more commands that won't commit
 	for i := 0; i < 50; i++ {
 		cfg.rafts[leader2].Start(rand.Int())
 	}
+
+	// fmt.Println("DONE2")
 
 	time.Sleep(RaftElectionTimeout / 2)
 
@@ -680,6 +688,53 @@ loop:
 	if total3-total2 > 3*20 {
 		t.Fatalf("too many RPCs (%v) for 1 second of idleness\n", total3-total2)
 	}
+
+	cfg.end()
+}
+
+// My test
+func TestPersistWithFail3C(t *testing.T) {
+	servers := 5
+	cfg := make_config(t, servers, false, false)
+	defer cfg.cleanup()
+
+	cfg.begin("Test (3C): persistence with failure")
+
+	cfg.one(101, servers, true)
+	leader := cfg.checkOneLeader()
+
+	cfg.crash1((leader + 1) % servers)
+
+	cfg.one(102, 4, true)
+
+	cfg.start1((leader+1)%servers, cfg.applier)
+	cfg.connect((leader + 1) % servers)
+
+	cfg.one(103, servers, true)
+	cfg.end()
+}
+
+// My test
+func TestPersistLeaderFail3C(t *testing.T) {
+	servers := 5
+	cfg := make_config(t, servers, false, false)
+	defer cfg.cleanup()
+
+	cfg.begin("Test (3C): persistence")
+
+	cfg.one(101, servers, true)
+
+	leader := cfg.checkOneLeader()
+	_, _, ok := cfg.rafts[leader].Start(102)
+	if !ok {
+		cfg.t.Fatalf("leader rejected\n")
+	}
+	cfg.crash1(leader)
+
+	cfg.start1(leader, cfg.applier)
+	cfg.connect(leader)
+
+	cfg.one(103, servers, true)
 
 	cfg.end()
 }
