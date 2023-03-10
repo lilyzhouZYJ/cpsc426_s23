@@ -735,6 +735,8 @@ func TestPersistLeaderFail3C(t *testing.T) {
 	cfg.connect(leader)
 
 	cfg.one(103, servers, true)
+
+	cfg.end()
 }
 
 func TestPersist13C(t *testing.T) {

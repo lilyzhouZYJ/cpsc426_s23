@@ -48,7 +48,3 @@ server role transitions. This made my code less readable, and as I was debugging
 decided to refactor just so that I can better understand and conceptualize what exactly
 I wrote. I spent many hours on this, but I think it was a fruitful experience that led
 to cleaner, more intuitive code.
-
-TODO
-- 5 unit tests total
-- Check time of testing

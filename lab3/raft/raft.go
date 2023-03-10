@@ -821,8 +821,7 @@ func (rf *Raft) startFollower() {
 		return
 	}
 
-	// timeout := rf.electionTimeout - time.Since(rf.lastHeartbeat)
-	timeout := rf.electionTimeout
+	timeout := rf.electionTimeout - time.Since(rf.lastHeartbeat)
 
 	rf.mu.Unlock()
 
